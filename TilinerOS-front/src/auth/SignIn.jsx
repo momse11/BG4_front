@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import api from '../api' // importa tu instancia de axios
+import api from '../utils/api' // importa tu instancia de axios
 
 export default function SignIn() {
   const [formData, setFormData] = useState({
@@ -12,14 +12,26 @@ export default function SignIn() {
 
   const handleChange = (e) => {
     const { name, value } = e.target
-    setFormData({ ...formData, [name]: value })
+    setFormData({ ...formData, [name]: value });
+    if (name === 'email') {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(value)) {
+      setStatus({ ...status, error: 'Formato de correo inválido' });
+    } else {
+      setStatus({ ...status, error: '' });
+    }
   }
+    
+
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault()
     setStatus({ loading: true, success: '', error: '' })
+    
 
     try {
+      console.log('Enviando datos al backend:', formData);
       const response = await api.post('/users', formData)
       setStatus({
         loading: false,

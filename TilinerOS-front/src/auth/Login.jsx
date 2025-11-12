@@ -1,5 +1,6 @@
 import { useState, useContext } from 'react'
 import { AuthContext } from './AuthProvider'
+import { useNavigate, Link } from 'react-router-dom'
 
 export default function Login() {
   const { user, login, logout } = useContext(AuthContext)
@@ -8,6 +9,7 @@ export default function Login() {
     password: ''
   })
   const [error, setError] = useState('')
+  const navigate = useNavigate()
 
   const handleChange = (e) => {
     const { name, value } = e.target
@@ -19,7 +21,8 @@ export default function Login() {
     setError('')
 
     try {
-      await login(formData) //conexion a backend
+      await login(formData) // Llama al backend
+      navigate('/landing') // Redirige a LandingPage si el login es exitoso
     } catch (err) {
       setError('Credenciales incorrectas o error al iniciar sesión.')
       console.error(err)
@@ -59,6 +62,11 @@ export default function Login() {
             <button type="submit">Entrar</button>
           </form>
           {error && <p style={{ color: 'red' }}>{error}</p>}
+
+          <p>¿No tienes cuenta?</p>
+          <Link to="/sign-in">
+            <button>Registrarse</button>
+          </Link>
         </>
       )}
     </div>
