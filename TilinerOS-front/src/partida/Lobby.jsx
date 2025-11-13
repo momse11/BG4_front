@@ -1,9 +1,10 @@
 import { useEffect, useState, useContext } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { AuthContext } from '../auth/AuthProvider'
-import { getPartida, selectRaza, selectPersonaje } from '../utils/api'
+import { getPartida, selectClase, selectPersonaje } from '../utils/api'
+import api from '../utils/api'
 import { usePartidaWS } from '../utils/ws'
-import SelectRazaModal from './SelectRazaModal'
+import SelectClaseModal from './SelectClaseModal'
 import SelectPersonajeModal from './SelectPersonajeModal'
 
 export default function Lobby() {
@@ -14,9 +15,9 @@ export default function Lobby() {
   // jugadores ahora proviene del hook de WebSocket
   const { jugadores } = usePartidaWS(id, user ? { id: user.id, username: user.username } : null)
   const [loading, setLoading] = useState(true)
-  const [showRaza, setShowRaza] = useState(false)
+  const [showClase, setShowClase] = useState(false)
   const [showPersonaje, setShowPersonaje] = useState(false)
-  const [selectedRazaLocal, setSelectedRazaLocal] = useState(null)
+  const [selectedClaseLocal, setSelectedClaseLocal] = useState(null)
 
   const fetchLobby = async () => {
     try {
@@ -35,17 +36,35 @@ export default function Lobby() {
     fetchLobby()
   }, [id])
 
-  const openSelectRaza = () => setShowRaza(true)
-  const onRazaSelected = async (raza) => {
+  // cuando el componente se desmonte (usuario sale de la ruta del lobby), llamar al endpoint leave
+  useEffect(() => {
+    return () => {
+      // intenta limpiar la asociación en backend; es idempotente
+      (async () => {
+        try {
+          // sólo intentar si hay user (si no hay token el servidor podría usar mock)
+          if (user && id) {
+            await api.post(`/partidas/${id}/leave`)
+          }
+        } catch (e) {
+          // ignorar errores de limpieza
+          console.debug('Leave partida cleanup failed', e?.response?.data || e.message)
+        }
+      })()
+    }
+  }, [id, user])
+
+  const openSelectClase = () => setShowClase(true)
+  const onClaseSelected = async (clase) => {
     try {
-      await selectRaza(id, raza)
-      setSelectedRazaLocal(raza)
-      setShowRaza(false)
+      await selectClase(id, clase)
+      setSelectedClaseLocal(clase)
+      setShowClase(false)
       setShowPersonaje(true)
       // no hace falta fetch: el server notificará por WS
     } catch (e) {
-      console.error('Error selecting raza', e)
-      alert(e?.response?.data?.error || 'Error seleccionando raza')
+      console.error('Error selecting clase', e)
+      alert(e?.response?.data?.error || 'Error seleccionando clase')
     }
   }
 
@@ -72,12 +91,16 @@ export default function Lobby() {
             {jugadores.map((p) => (
               <div key={p.id} style={{ border: '1px solid #ddd', padding: 12, borderRadius: 8 }}>
                 <div style={{ fontWeight: 600 }}>{p.username}</div>
-                <div style={{ fontSize: 12 }}>{p.avatar_url ? <img src={p.avatar_url} alt={p.username} style={{ width: 48, height: 48 }} /> : null}</div>
-                <div>Raza: {p.selected_raza || '—'}</div>
-                <div>Personaje ID: {p.selected_personaje_id || '—'}</div>
+                <div style={{ fontSize: 12 }}>
+                  {p.selected_personaje && p.selected_personaje.sprite ? (
+                    <img src={p.selected_personaje.sprite} alt={p.selected_personaje.nombre} style={{ width: 48, height: 48, objectFit: 'contain' }} />
+                  ) : (p.avatar_url ? <img src={p.avatar_url} alt={p.username} style={{ width: 48, height: 48 }} /> : <div style={{ width: 48, height: 48, background: '#eee' }} />)}
+                </div>
+                <div>Clase: {p.selected_clase || '—'}</div>
+                <div>Personaje: {p.selected_personaje ? p.selected_personaje.nombre : (p.selected_personaje_id || '—')}</div>
                 {user && Number(user.id) === Number(p.id) && (
                   <div style={{ marginTop: 8 }}>
-                    <button onClick={openSelectRaza}>Seleccionar personaje</button>
+                    <button onClick={openSelectClase}>{p.selected_personaje_id ? 'Cambiar personaje' : 'Seleccionar personaje'}</button>
                   </div>
                 )}
               </div>
@@ -91,8 +114,8 @@ export default function Lobby() {
         </>
       )}
 
-      {showRaza && <SelectRazaModal onClose={() => setShowRaza(false)} onSelect={onRazaSelected} />}
-      {showPersonaje && <SelectPersonajeModal raza={selectedRazaLocal || (user && jugadores.find(j => Number(j.id) === Number(user.id))?.selected_raza)} onClose={() => setShowPersonaje(false)} onSelect={onPersonajeSelected} />}
+      {showClase && <SelectClaseModal onClose={() => setShowClase(false)} onSelect={onClaseSelected} />}
+      {showPersonaje && <SelectPersonajeModal clase={selectedClaseLocal || (user && jugadores.find(j => Number(j.id) === Number(user.id))?.selected_clase)} onClose={() => setShowPersonaje(false)} onSelect={onPersonajeSelected} />}
     </div>
   )
 }

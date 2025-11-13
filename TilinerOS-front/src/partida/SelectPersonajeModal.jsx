@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
-import { getPersonajesByRaza } from '../utils/api'
+import { getPersonajesByClase } from '../utils/api'
 
-export default function SelectPersonajeModal({ raza, onClose, onSelect }) {
+export default function SelectPersonajeModal({ clase, onClose, onSelect }) {
   const [personajes, setPersonajes] = useState([])
   const [loading, setLoading] = useState(true)
 
@@ -9,7 +9,7 @@ export default function SelectPersonajeModal({ raza, onClose, onSelect }) {
     let mounted = true
     (async () => {
       try {
-        const data = await getPersonajesByRaza(raza)
+        const data = await getPersonajesByClase(clase)
         if (!mounted) return
         setPersonajes(data)
       } catch (e) {
@@ -19,15 +19,15 @@ export default function SelectPersonajeModal({ raza, onClose, onSelect }) {
       }
     })()
     return () => { mounted = false }
-  }, [raza])
+  }, [clase])
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1001 }}>
       <div style={{ background: '#fff', padding: 20, borderRadius: 8, width: 800, maxHeight: '80vh', overflow: 'auto' }}>
-        <h3>Personajes — {raza}</h3>
+        <h3>Personajes — {clase}</h3>
         {loading ? <p>Cargando...</p> : (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 12 }}>
-            {personajes.length === 0 && <p>No hay personajes para esta raza</p>}
+            {personajes.length === 0 && <p>No hay personajes para esta clase</p>}
             {personajes.map((p) => (
               <div key={p.id} style={{ border: '1px solid #ddd', padding: 8, borderRadius: 6, textAlign: 'center' }}>
                 <div style={{ height: 120, background: '#f5f5f5', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>

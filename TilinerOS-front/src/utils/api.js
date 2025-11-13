@@ -68,8 +68,9 @@ export const getPartida = async (id) => {
   return r.data
 }
 
-export const selectRaza = async (partidaId, raza) => {
-  const r = await api.post(`/partidas/${partidaId}/select-raza`, { raza })
+// Seleccionar clase (usa endpoint /select-clase)
+export const selectClase = async (partidaId, clase) => {
+  const r = await api.post(`/partidas/${partidaId}/select-clase`, { clase })
   return r.data
 }
 
@@ -79,16 +80,21 @@ export const selectPersonaje = async (partidaId, personajeId) => {
 }
 
 // Personaje catalog
-export const getRazas = async () => {
-  const r = await api.get('/personaje/razas')
-  return r.data.razas || []
+// Clases / Personajes por clase
+export const getClases = async () => {
+  const r = await api.get('/personaje/clases')
+  return r.data.clases || []
 }
 
-export const getPersonajesByRaza = async (raza) => {
-  const r = await api.get(`/personaje/raza/${encodeURIComponent(raza)}`)
+export const getPersonajesByClase = async (clase) => {
+  const r = await api.get(`/personaje/clase/${encodeURIComponent(clase)}`)
   return r.data.personajes || []
 }
 
+// backward-compatible aliases (mantener nombres anteriores por compatibilidad con componentes existentes)
+// (no aliases for razas — trabajamos por 'clase')
+
 //WEBSOCKETS (DESPUES)
+
 
 export default api
