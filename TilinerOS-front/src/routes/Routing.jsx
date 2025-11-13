@@ -2,20 +2,23 @@
 
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import Landing from '../landing/Landing-Page'
+import LandingPublic from '../landing/LandingPublic'
 import Login from '../auth/Login'
 import SignIn from '../auth/SignIn'
 import CrearPartida from "../game/CrearPartida";
 import PartidaView from "../game/PartidaView"; 
+import ProtectedRoute from './ProtectedRoute'
 
 export default function Routing() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/login" element={<Login />} />
-        <Route path="/landing" element={<Landing />} />
-        <Route path="/sign-in" element={<SignIn />} />
-        <Route path="/crear-partida" element={<CrearPartida />} />
-        <Route path="/partida/:id" element={<PartidaView />} />
+  <Route path="/login" element={<Login />} />
+  <Route path="/" element={<LandingPublic />} />
+  <Route path="/landing" element={<Landing />} />
+  <Route path="/sign-in" element={<SignIn />} />
+  <Route path="/crear-partida" element={<ProtectedRoute><CrearPartida /></ProtectedRoute>} />
+  <Route path="/partida/:id" element={<ProtectedRoute><PartidaView /></ProtectedRoute>} />
       </Routes>
     </BrowserRouter>
   )
