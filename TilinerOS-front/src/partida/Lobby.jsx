@@ -79,7 +79,7 @@ export default function Lobby() {
     }
   }
 
-  const allSelected = jugadores.length > 0 && jugadores.every((j) => j.selected_personaje_id)
+  const allSelected = jugadores.length === 4 && jugadores.length > 0 && jugadores.every((j) => j.selected_personaje_id)
   const isCreator = user && partida && Number(partida.creador_id) === Number(user.id)
 
   return (
@@ -108,8 +108,31 @@ export default function Lobby() {
           </div>
 
           <div style={{ marginTop: 20, display: 'flex', gap: 12 }}>
-            <button onClick={() => navigate(`/partida/${id}`)}>Volver</button>
-            <button disabled={!isCreator || !allSelected} onClick={() => alert('Iniciar partida (no implementado)')}>Empezar</button>
+            <button onClick={async () => {
+              try {
+                if (!user) { navigate('/partidas'); return }
+                const meId = Number(user.id)
+                const creatorId = partida ? Number(partida.creador_id) : null
+                if (creatorId && meId === creatorId) {
+                  const ok = window.confirm('Eres el creador. ¿Borrar la partida y salir?')
+                  if (!ok) return
+                  await api.delete(`/partidas/${id}`)
+                  navigate('/partidas')
+                } else {
+                  const ok = window.confirm('¿Salir de la partida?')
+                  if (!ok) return
+                  await api.post(`/partidas/${id}/leave`)
+                  navigate('/partidas')
+                }
+              } catch (e) {
+                console.error('Error leaving/deleting partida', e)
+                alert(e?.response?.data?.error || 'Error al salir de la partida')
+              }
+            }}>Volver</button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{ fontSize: 14 }}>{jugadores.length}/4 jugadores</div>
+              <button disabled={!isCreator || !allSelected} onClick={() => navigate(`/partida/${id}/empezada`)}>Empezar</button>
+            </div>
           </div>
         </>
       )}

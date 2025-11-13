@@ -7,8 +7,8 @@ import {WebSocketProvider}  from "./utils/WebSocketProvider";
 
 createRoot(document.getElementById('root')).render(
   <AuthProvider>
-    <WebSocketProvider>
-      <Routing />
-    </WebSocketProvider>
+      <WebSocketProvider>
+        <Routing />
+      </WebSocketProvider>
   </AuthProvider>
 )

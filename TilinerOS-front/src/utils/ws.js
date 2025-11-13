@@ -7,25 +7,57 @@ export function usePartidaWS(partidaId, jugador) {
   const wsRef = useRef(null);
 
   useEffect(() => {
-    const ws = new WebSocket('ws://localhost:3000/ws');
-    wsRef.current = ws;
+    // only connect when we have a partidaId and jugador info
+    if (!partidaId || !jugador || !jugador.id) {
+      // reset jugadores if no connection
+      setJugadores([]);
+      return;
+    }
 
-    ws.onopen = () => {
-      console.log('Conectado a WS');
-      ws.send(JSON.stringify({ type: 'JOIN', partidaId, jugador }));
+    let ws = null;
+    let reconnectTimer = null;
+    const connect = () => {
+      ws = new WebSocket('ws://localhost:3000/ws');
+      wsRef.current = ws;
+
+      ws.onopen = () => {
+        console.log('Conectado a WS');
+        try { ws.send(JSON.stringify({ type: 'JOIN', partidaId, jugador })); } catch (e) { /* ignore */ }
+      };
+
+      ws.onmessage = (msg) => {
+        try {
+          const data = JSON.parse(msg.data);
+          if (data.type === 'UPDATE_PLAYERS') {
+            // dedupe jugadores by id to avoid duplicate cards
+            const arr = Array.isArray(data.jugadores) ? data.jugadores : [];
+            const map = {};
+            arr.forEach((j) => { if (j && j.id !== undefined) map[String(j.id)] = j; });
+            const unique = Object.values(map);
+            setJugadores(unique);
+          }
+        } catch (e) { console.error('WS message parse error', e) }
+      };
+
+      ws.onclose = (ev) => {
+        console.log('WS cerrado', ev && ev.reason ? ev.reason : '');
+        // try to reconnect once after a short delay
+        if (!reconnectTimer) {
+          reconnectTimer = setTimeout(() => { reconnectTimer = null; connect(); }, 1000);
+        }
+      };
+      ws.onerror = (err) => console.error('WS error:', err);
     };
 
-    ws.onmessage = (msg) => {
-      const data = JSON.parse(msg.data);
-      if (data.type === 'UPDATE_PLAYERS') {
-        setJugadores(data.jugadores);
-      }
+    connect();
+
+    return () => {
+      try {
+        if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null }
+        if (ws && ws.readyState === WebSocket.OPEN) ws.close();
+        else if (ws && ws.readyState === WebSocket.CONNECTING) ws.close();
+      } catch (e) {}
     };
-
-    ws.onclose = () => console.log('WS cerrado');
-    ws.onerror = (err) => console.error('WS error:', err);
-
-    return () => ws.close();
   }, [partidaId, jugador]);
 
   return { jugadores };
