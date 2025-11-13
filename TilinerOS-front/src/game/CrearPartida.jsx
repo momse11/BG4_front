@@ -23,8 +23,9 @@ export default function CrearPartida() {
         contraseña: privado ? contraseña : null,
       });
 
-      setExito(`Partida #${partida.id} creada con éxito`);
-      setTimeout(() => navigate(`/partida/${partida.id}`), 1500); // redirige después de crear
+  const pid = partida?.id || partida?.partida?.id || null;
+  setExito(`Partida #${pid} creada con éxito`);
+  setTimeout(() => navigate(`/partida/${pid}/lobby`), 800); // redirige al lobby
     } catch (err) {
       setError(err.error || "❌ Error al crear la partida");
     } finally {

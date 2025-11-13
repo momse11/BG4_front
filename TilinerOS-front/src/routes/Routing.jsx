@@ -7,6 +7,7 @@ import Login from '../auth/Login'
 import SignIn from '../auth/SignIn'
 import CrearPartida from "../game/CrearPartida";
 import PartidaView from "../game/PartidaView"; 
+import Lobby from '../partida/Lobby'
 import ProtectedRoute from './ProtectedRoute'
 
 export default function Routing() {
@@ -19,6 +20,7 @@ export default function Routing() {
   <Route path="/sign-in" element={<SignIn />} />
   <Route path="/crear-partida" element={<ProtectedRoute><CrearPartida /></ProtectedRoute>} />
   <Route path="/partida/:id" element={<ProtectedRoute><PartidaView /></ProtectedRoute>} />
+  <Route path="/partida/:id/lobby" element={<ProtectedRoute><Lobby /></ProtectedRoute>} />
       </Routes>
     </BrowserRouter>
   )

@@ -24,8 +24,10 @@ export default function Login() {
       await login(formData) // Llama al backend
       navigate('/landing') // Redirige a LandingPage si el login es exitoso
     } catch (err) {
-      setError('Credenciales incorrectas o error al iniciar sesión.')
-      console.error(err)
+      // Mostrar mensaje más específico si el backend lo proporciona
+      const serverMsg = err?.response?.data?.error || err?.message || 'Credenciales incorrectas o error de conexión.'
+      setError(serverMsg)
+      console.error('Login error:', err)
     }
   }
 

@@ -62,6 +62,33 @@ export const getCurrentUser = async () => {
   return response.data
 }
 
+// Partida / Lobby APIs
+export const getPartida = async (id) => {
+  const r = await api.get(`/partidas/${id}`)
+  return r.data
+}
+
+export const selectRaza = async (partidaId, raza) => {
+  const r = await api.post(`/partidas/${partidaId}/select-raza`, { raza })
+  return r.data
+}
+
+export const selectPersonaje = async (partidaId, personajeId) => {
+  const r = await api.post(`/partidas/${partidaId}/select-personaje`, { personajeId })
+  return r.data
+}
+
+// Personaje catalog
+export const getRazas = async () => {
+  const r = await api.get('/personaje/razas')
+  return r.data.razas || []
+}
+
+export const getPersonajesByRaza = async (raza) => {
+  const r = await api.get(`/personaje/raza/${encodeURIComponent(raza)}`)
+  return r.data.personajes || []
+}
+
 //WEBSOCKETS (DESPUES)
 
 export default api

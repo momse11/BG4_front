@@ -1,6 +1,7 @@
 //ve todo lo de autentufuacion, como el login y logout.
 import { createContext, useState, useEffect } from "react";
 import axios from "axios";
+import api from '../utils/api'
 
 export const AuthContext = createContext();
 
@@ -22,27 +23,26 @@ export default function AuthProvider({ children }) {
 
   // login
   const login = async ({ email, username, password }) => {
-  try {
-    const response = await axios.post("http://localhost:3000/api/v1/users/login", {
-      email,
-      username,
-      password,
-    });
+    try {
+      // usar la instancia `api` con baseURL y manejo de token
+      const response = await api.post('/users/login', { email, username, password });
+      const { access_token, user } = response.data;
 
-    const { access_token, user } = response.data;
+      // Guardar token y usuario
+      localStorage.setItem('token', access_token);
+      localStorage.setItem('user', JSON.stringify(user));
 
-    // Guardar token y usuario
-    localStorage.setItem("token", access_token);
-    localStorage.setItem("user", JSON.stringify(user));
+      // Configurar axios globalmente (por si otros módulos usan axios directamente)
+      axios.defaults.headers.common['Authorization'] = `Bearer ${access_token}`;
+      setUser(user);
 
-    // Configurar axios globalmente
-    axios.defaults.headers.common["Authorization"] = `Bearer ${access_token}`;
-    setUser(user);
-  } catch (error) {
-    console.error("Error al iniciar sesión:", error);
-    alert("Credenciales incorrectas o error de conexión.");
-  }
-};
+      return { user, token: access_token };
+    } catch (error) {
+      console.error('Error al iniciar sesión en AuthProvider:', error?.response?.data || error.message);
+      // lanzar el error para que el componente de UI lo capture y muestre un mensaje
+      throw error;
+    }
+  };
 
   // logout
   const logout = async () => {
@@ -76,7 +76,8 @@ export default function AuthProvider({ children }) {
         headers: { Authorization: `Bearer ${token}` }
       }
     );
-    return response.data;
+    // response.data may contain { partida }
+    return response.data.partida || response.data;
   } catch (error) {
     console.error("Error al crear partida:", error);
     throw error;
