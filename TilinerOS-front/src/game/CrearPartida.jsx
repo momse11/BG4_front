@@ -23,11 +23,12 @@ export default function CrearPartida() {
         contraseña: privado ? contraseña : null,
       });
 
-  const pid = partida?.id || partida?.partida?.id || null;
-  setExito(`Partida #${pid} creada con éxito`);
-  setTimeout(() => navigate(`/partida/${pid}/lobby`), 800); // redirige al lobby
+      setExito(`Partida #${partida.id} creada con éxito`);
+      setTimeout(() => navigate(`/partida/${partida.id}`), 1500); // redirige después de crear
     } catch (err) {
-      setError(err.error || "❌ Error al crear la partida");
+      // err puede ser un objeto lanzado por AuthProvider (error.response.data) o un Error
+      const serverMsg = err?.error || err?.message || err?.response?.data?.error || null;
+      setError(serverMsg || "❌ Error al crear la partida");
     } finally {
       setLoading(false);
     }
