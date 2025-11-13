@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import api from '../utils/api' // importa tu instancia de axios
 
-export default function SignIn() {
+export default function SignUp() {
   const [formData, setFormData] = useState({
     username: '',
     email: '',

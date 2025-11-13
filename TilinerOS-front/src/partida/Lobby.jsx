@@ -23,7 +23,7 @@ export default function Lobby() {
     try {
       const data = await getPartida(id)
       setPartida(data.partida)
-      setJugadores(data.jugadores || [])
+      // jugadores provienen del WebSocket hook; no setJugadores local
     } catch (e) {
       console.error('Error fetching partida', e)
     } finally {

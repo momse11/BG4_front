@@ -66,7 +66,7 @@ export default function Login() {
           {error && <p style={{ color: 'red' }}>{error}</p>}
 
           <p>¿No tienes cuenta?</p>
-          <Link to="/sign-in">
+          <Link to="/sign-up">
             <button>Registrarse</button>
           </Link>
         </>
