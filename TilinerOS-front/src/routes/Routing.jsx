@@ -6,6 +6,7 @@ import Login from '../auth/Login'
 import SignIn from '../auth/SignIn'
 import CrearPartida from "../game/CrearPartida";
 import PartidaView from "../game/PartidaView"; 
+import PartidaIndex from "../game/PartidaIndex"; 
 
 export default function Routing() {
   return (
@@ -16,6 +17,7 @@ export default function Routing() {
         <Route path="/sign-in" element={<SignIn />} />
         <Route path="/crear-partida" element={<CrearPartida />} />
         <Route path="/partida/:id" element={<PartidaView />} />
+        <Route path="/partidas" element={<PartidaIndex />} />
       </Routes>
     </BrowserRouter>
   )

@@ -18,7 +18,7 @@ export default function CrearPartida() {
     setLoading(true);
 
     try {
-      const partida = await createPartida({
+      const {partida} = await createPartida({
         privado: privado ? 1 : 0,
         contraseña: privado ? contraseña : null,
       });
