@@ -13,6 +13,7 @@ export default function SignIn() {
   const handleChange = (e) => {
     const { name, value } = e.target
     setFormData({ ...formData, [name]: value });
+    //validacion formato de mail en tiempo real!
     if (name === 'email') {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(value)) {
