@@ -55,3 +55,5 @@ Este endpoint devuelve toda la información base de un mapa, incluyendo su nombr
 GET /api/v1/casillas/:id
 
 Este endpoint entrega los datos completos de una casilla individual: su tipo (Cofre, Descanso, Ciudad, Inaccesible, etc.), coordenadas, objetos y entidades asociadas. El frontend lo utiliza para determinar qué iconos mostrar en cada celda, validar si la casilla es accesible y posicionar correctamente los sprites dentro del mapa.
+
+Para seleccionar personaje es necesario hardcodear a través de la docs unirse a partida y asignarse personajes debido a problemas de merge.
