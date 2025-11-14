@@ -1,6 +1,4 @@
 [
-  {"name":"Alejandro Araya","role":"Líder de proyecto","skills":"Gestión de producto, diseño de juego, coordinación","initials":"AA"},
-  {"name":"María Rivera","role":"Frontend","skills":"React, Vite, UI/UX, accesibilidad","initials":"MR"},
-  {"name":"Carlos Reyes","role":"Backend","skills":"Node.js, Koa, WebSockets, PostgreSQL","initials":"CR"},
-  {"name":"Lucía Soto","role":"DevOps / QA","skills":"CI/CD, testing, despliegues, monitoreo","initials":"LS"}
+  {"name":"Karla Rivero","role":"Frontend y UI/UX","skills":"Diseño de juego, coordinación","initials":"KR"},
+  {"name":"Montserrat Contreras","role":"Backend y diseño","skills":"Diseño de juego, modelación de bases de datos","initials":"MC"}
 ]
