@@ -39,11 +39,11 @@ export function usePartidaWS(partidaId, jugador) {
         try {
           const data = JSON.parse(msg.data);
           console.debug('[usePartidaWS] WS message', data);
-          //if (data && data.type === 'FORCE_RELOAD') {
-            //console.debug('[usePartidaWS] FORCE_RELOAD received — reloading page');
-            //try { window.location.reload(); } catch (e) { /* noop */ }
-            //return;
-          //}
+          if (data && data.type === 'PARTIDA_DELETED') {
+            console.debug('[usePartidaWS] PARTIDA_DELETED received — redirecting to /partidas');
+            try { window.location.href = '/partidas'; } catch (e) { /* noop */ }
+            return;
+          }
           if (data.type === 'UPDATE_PLAYERS') {
             // dedupe jugadores by id to avoid duplicate cards
             const arr = Array.isArray(data.jugadores) ? data.jugadores : [];

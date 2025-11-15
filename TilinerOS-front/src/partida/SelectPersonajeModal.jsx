@@ -18,7 +18,6 @@ export default function SelectPersonajeModal({ clase, onClose, onSelect }) {
     ;(async () => {
         try {
         const data = await safeGetPersonajesByClase(clase)
-        console.debug('[SelectPersonajeModal] fetched personajes for clase', clase, data)
         if (!mounted) return
         if (!Array.isArray(data)) {
           console.warn('getPersonajesByClase returned non-array:', data)

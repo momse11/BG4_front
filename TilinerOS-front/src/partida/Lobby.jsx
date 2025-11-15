@@ -27,6 +27,13 @@ export default function Lobby() {
       setPartida(data.partida)
       // jugadores provienen del WebSocket hook; no setJugadores local
     } catch (e) {
+      // si la partida no existe, redirigir a la lista de partidas
+      try {
+        if (e?.response?.status === 404) {
+          navigate('/partidas')
+          return
+        }
+      } catch (er) {}
       console.error('Error fetching partida', e)
     } finally {
       setLoading(false)
@@ -38,23 +45,58 @@ export default function Lobby() {
     fetchLobby()
   }, [id])
 
-  // cuando el componente se desmonte (usuario sale de la ruta del lobby), llamar al endpoint leave
+  // cuando el componente se desmonte (usuario sale de la ruta del lobby), intentar eliminar/salir de la partida
+  // Protegemos la ruta: antes de recargar/cerrar o navegar fuera, pedimos confirmación.
+  // Usamos sendBeacon para notificar al servidor si el usuario confirma la salida.
   useEffect(() => {
-    return () => {
-      // intenta limpiar la asociación en backend; es idempotente
-      (async () => {
-        try {
-          // sólo intentar si hay user (si no hay token el servidor podría usar mock)
-          if (user && id) {
-            await api.post(`/partidas/${id}/leave`)
-          }
-        } catch (e) {
-          // ignorar errores de limpieza
-          console.debug('Leave partida cleanup failed', e?.response?.data || e.message)
+    const beforeUnloadHandler = (e) => {
+      try {
+        // mostrar diálogo nativo de confirmación
+        e.preventDefault()
+        e.returnValue = ''
+        // avisar al servidor (sendBeacon funciona en unload)
+        if (navigator.sendBeacon) {
+          try { navigator.sendBeacon(`${window.location.origin}/partidas/${id}/leave`, '') } catch (err) {}
         }
-      })()
+        return ''
+      } catch (err) {
+        // noop
+      }
     }
-  }, [id, user])
+
+    // Interceptar clicks en enlaces para confirmar navegación SPA
+    // Sólo preguntar si el enlace realmente cambia de pathname (evitar triggers por fragment/hash o enlaces que no navegan)
+    const clickHandler = (ev) => {
+      try {
+        const a = ev.target.closest && ev.target.closest('a')
+        if (!a) return
+        const href = a.getAttribute('href') || ''
+        if (!href) return
+        // ignorar anchors puras y fragmentos
+        if (href.startsWith('#')) return
+        // permitir opt-out con data-no-confirm
+        if (a.dataset && a.dataset.noConfirm) return
+        // construir URL absoluta para comparar pathname
+        let url
+        try { url = new URL(href, window.location.origin) } catch (err) { return }
+        // si la navegación sería al mismo pathname, no preguntar
+        if (url.pathname === window.location.pathname) return
+        // ahora sí: confirmar
+        const ok = window.confirm('Seguro que quieres salir del lobby? Esto te sacará de la partida.')
+        if (!ok) ev.preventDefault()
+      } catch (err) {
+        // noop
+      }
+    }
+
+    window.addEventListener('beforeunload', beforeUnloadHandler)
+    document.addEventListener('click', clickHandler, true)
+
+    return () => {
+      window.removeEventListener('beforeunload', beforeUnloadHandler)
+      document.removeEventListener('click', clickHandler, true)
+    }
+  }, [id])
 
   const openSelectClase = () => setShowClase(true)
   const onClaseSelected = async (clase) => {
@@ -74,11 +116,9 @@ export default function Lobby() {
     try {
       await selectPersonaje(id, personajeId)
       setShowPersonaje(false)
-      // Quick fix: recargar la página tras la selección para asegurar que todos los clientes
-      // vean el estado actualizado (evita condiciones de carrera con WS).
       setTimeout(() => {
         try { window.location.reload() } catch (e) { /* noop */ }
-      }, 400)
+      }, 100)
     } catch (e) {
       console.error('Error selecting personaje', e)
       alert(e?.response?.data?.error || 'Error seleccionando personaje')
@@ -123,11 +163,15 @@ export default function Lobby() {
                   if (!ok) return
                   await api.delete(`/partidas/${id}`)
                   navigate('/partidas')
+                  // asegurar recarga del cliente que sale para limpiar sockets locales
+                  setTimeout(() => { try { window.location.reload() } catch (e) {} }, 150)
                 } else {
                   const ok = window.confirm('¿Salir de la partida?')
                   if (!ok) return
                   await api.post(`/partidas/${id}/leave`)
                   navigate('/partidas')
+                  // asegurar recarga del cliente que sale para limpiar sockets locales
+                  setTimeout(() => { try { window.location.reload() } catch (e) {} }, 150)
                 }
               } catch (e) {
                 console.error('Error leaving/deleting partida', e)
@@ -143,7 +187,19 @@ export default function Lobby() {
       )}
 
       {showClase && <SelectClaseModal onClose={() => setShowClase(false)} onSelect={onClaseSelected} />}
-      {showPersonaje && <SelectPersonajeModal clase={selectedClaseLocal || (user && jugadores.find(j => Number(j.id) === Number(user.id))?.selected_clase)} onClose={() => setShowPersonaje(false)} onSelect={onPersonajeSelected} />}
+      {showPersonaje && <SelectPersonajeModal
+        clase={selectedClaseLocal || (user && jugadores.find(j => Number(j.id) === Number(user.id))?.selected_clase)}
+        onClose={async () => {
+          // Al cancelar el selector de personaje, limpiar la clase seleccionada y propagar
+          try {
+            await selectClase(id, '')
+          } catch (e) {
+            console.debug('Error clearing clase on modal close', e?.response?.data || e.message)
+          }
+          setShowPersonaje(false)
+        }}
+        onSelect={onPersonajeSelected}
+      />}
     </div>
   )
 }
