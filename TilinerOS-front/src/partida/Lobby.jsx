@@ -1,4 +1,4 @@
-import { useEffect, useState, useContext } from 'react'
+import { useEffect, useState, useContext, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { AuthContext } from '../auth/AuthProvider'
 import { getPartida, selectClase, selectPersonaje } from '../utils/api'
@@ -13,7 +13,9 @@ export default function Lobby() {
   const { user } = useContext(AuthContext)
   const [partida, setPartida] = useState(null)
   // jugadores ahora proviene del hook de WebSocket
-  const { jugadores } = usePartidaWS(id, user ? { id: user.id, username: user.username } : null)
+  // memoizar el objeto jugador para evitar recrear la referencia en cada render
+  const jugadorParam = useMemo(() => (user ? { id: user.id, username: user.username } : null), [user?.id, user?.username]);
+  const { jugadores } = usePartidaWS(id, jugadorParam)
   const [loading, setLoading] = useState(true)
   const [showClase, setShowClase] = useState(false)
   const [showPersonaje, setShowPersonaje] = useState(false)
@@ -72,13 +74,16 @@ export default function Lobby() {
     try {
       await selectPersonaje(id, personajeId)
       setShowPersonaje(false)
-      // el server enviará UPDATE_PLAYERS por WS para refrescar la vista
+      // Quick fix: recargar la página tras la selección para asegurar que todos los clientes
+      // vean el estado actualizado (evita condiciones de carrera con WS).
+      setTimeout(() => {
+        try { window.location.reload() } catch (e) { /* noop */ }
+      }, 400)
     } catch (e) {
       console.error('Error selecting personaje', e)
       alert(e?.response?.data?.error || 'Error seleccionando personaje')
     }
   }
-
   const allSelected = jugadores.length === 4 && jugadores.length > 0 && jugadores.every((j) => j.selected_personaje_id)
   const isCreator = user && partida && Number(partida.creador_id) === Number(user.id)
 

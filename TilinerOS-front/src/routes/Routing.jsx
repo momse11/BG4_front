@@ -1,6 +1,6 @@
 //maneja rutas de otros archivos, para organizarlas
 
-import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import { Routes, Route } from 'react-router-dom'
 import Landing from '../landing/Landing-Page'
 import Login from '../auth/Login'
 import SignUp from '../auth/SignUp'
@@ -12,7 +12,6 @@ import PartidaEmpezada from '../partida/PartidaEmpezada'
 
 export default function Routing() {
   return (
-    <BrowserRouter>
       <Routes>
         <Route path="/partidas" element={<PartidaIndex />} />
         <Route path="/" element={<LandingPublic />} />
@@ -23,6 +22,5 @@ export default function Routing() {
         <Route path="/partida/:id" element={<Lobby />} />
         <Route path="/partida/:id/empezada" element={<PartidaEmpezada />} />
       </Routes>
-    </BrowserRouter>
   )
 }

@@ -1,5 +1,7 @@
 import { createContext, useContext, useEffect, useRef, useState } from "react";
+import { useLocation } from 'react-router-dom'
 import { AuthContext } from "../auth/AuthProvider";
+import api from './api'
 
 export const WebSocketContext = createContext();
 
@@ -41,6 +43,31 @@ export function WebSocketProvider({ children }) {
       ws.current?.close();
     };
   }, [user]);
+
+  // Auto-leave: cuando el usuario navega fuera de /partida/:id, avisar al backend
+  const location = useLocation();
+  const prevPartidaRef = useRef(null);
+
+  useEffect(() => {
+    try {
+      const m = String(location?.pathname || '').match(/^\/partida\/([^/]+)/);
+      const curPartida = m ? m[1] : null;
+      const prev = prevPartidaRef.current;
+      if (prev && prev !== curPartida) {
+        // salió de la partida `prev`
+        (async () => {
+          try {
+            await api.post(`/partidas/${prev}/leave`);
+          } catch (e) {
+            console.debug('Auto-leave failed', e?.response?.data || e?.message || e);
+          }
+        })();
+      }
+      prevPartidaRef.current = curPartida;
+    } catch (e) {
+      // noop
+    }
+  }, [location, user]);
 
   // enviar mensaje
   const sendMessage = (msg) => {

@@ -6,7 +6,6 @@ export default function SelectClaseModal({ onClose, onSelect }) {
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState(null)
 
-  // safe wrapper in case getClases isn't a function
   const safeGetClases = typeof getClases === 'function' ? getClases : async () => []
 
   useEffect(() => {

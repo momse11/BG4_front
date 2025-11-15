@@ -13,21 +13,37 @@ export function usePartidaWS(partidaId, jugador) {
       setJugadores([]);
       return;
     }
-
     let ws = null;
     let reconnectTimer = null;
+    let reconnectAttempts = 0;
+    const maxRetries = 5;
+    const baseDelay = 1000; // ms
+
     const connect = () => {
+      // avoid creating duplicate connecting sockets
+      if (wsRef.current && (wsRef.current.readyState === WebSocket.OPEN || wsRef.current.readyState === WebSocket.CONNECTING)) {
+        ws = wsRef.current;
+        return;
+      }
+
       ws = new WebSocket('ws://localhost:3000/ws');
       wsRef.current = ws;
 
       ws.onopen = () => {
         console.log('Conectado a WS');
+        reconnectAttempts = 0;
         try { ws.send(JSON.stringify({ type: 'JOIN', partidaId, jugador })); } catch (e) { /* ignore */ }
       };
 
       ws.onmessage = (msg) => {
         try {
           const data = JSON.parse(msg.data);
+          console.debug('[usePartidaWS] WS message', data);
+          //if (data && data.type === 'FORCE_RELOAD') {
+            //console.debug('[usePartidaWS] FORCE_RELOAD received — reloading page');
+            //try { window.location.reload(); } catch (e) { /* noop */ }
+            //return;
+          //}
           if (data.type === 'UPDATE_PLAYERS') {
             // dedupe jugadores by id to avoid duplicate cards
             const arr = Array.isArray(data.jugadores) ? data.jugadores : [];
@@ -41,12 +57,20 @@ export function usePartidaWS(partidaId, jugador) {
 
       ws.onclose = (ev) => {
         console.log('WS cerrado', ev && ev.reason ? ev.reason : '');
-        // try to reconnect once after a short delay
-        if (!reconnectTimer) {
-          reconnectTimer = setTimeout(() => { reconnectTimer = null; connect(); }, 1000);
+        // exponential backoff reconnect, with limit
+        if (reconnectAttempts < maxRetries) {
+          reconnectAttempts += 1;
+          const delay = baseDelay * Math.pow(2, reconnectAttempts - 1);
+          if (reconnectTimer) clearTimeout(reconnectTimer);
+          reconnectTimer = setTimeout(() => { reconnectTimer = null; connect(); }, delay);
+        } else {
+          console.warn('Max WS reconnect attempts reached for partida', partidaId);
         }
       };
-      ws.onerror = (err) => console.error('WS error:', err);
+
+      ws.onerror = (err) => {
+        console.error('WS error:', err);
+      };
     };
 
     connect();
@@ -54,8 +78,9 @@ export function usePartidaWS(partidaId, jugador) {
     return () => {
       try {
         if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null }
-        if (ws && ws.readyState === WebSocket.OPEN) ws.close();
-        else if (ws && ws.readyState === WebSocket.CONNECTING) ws.close();
+        if (wsRef.current && (wsRef.current.readyState === WebSocket.OPEN || wsRef.current.readyState === WebSocket.CONNECTING)) {
+          try { wsRef.current.close(); } catch (e) {}
+        }
       } catch (e) {}
     };
   }, [partidaId, jugador]);
