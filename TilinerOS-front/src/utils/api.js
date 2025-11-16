@@ -68,7 +68,6 @@ export const getPartida = async (id) => {
   return r.data
 }
 
-// Seleccionar clase (usa endpoint /select-clase)
 export const selectClase = async (partidaId, clase) => {
   const r = await api.post(`/partidas/${partidaId}/select-clase`, { clase })
   return r.data
@@ -80,7 +79,6 @@ export const selectPersonaje = async (partidaId, personajeId) => {
 }
 
 // Personaje catalog
-// Clases / Personajes por clase
 export const getClases = async () => {
   const r = await api.get('/personaje/clases')
   return r.data.clases || []
