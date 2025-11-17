@@ -1,6 +1,6 @@
 import { useState, useContext } from "react";
 import { AuthContext } from "../auth/AuthProvider"; // importa el contexto
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 
 export default function CrearPartida() {
   const { createPartida } = useContext(AuthContext); // usa createPartida del contexto
@@ -92,6 +92,11 @@ export default function CrearPartida() {
           </p>
         )}
       </form>
-    </div>
+              {/* Botón volver */}
+        <Link to="/landing">
+          <button className="btn-secondary">Volver a mi página de usuario</button>
+        </Link>
+      </div>
+
   );
 }

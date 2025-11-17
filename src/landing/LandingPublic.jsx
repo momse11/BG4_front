@@ -1,7 +1,7 @@
-import React from 'react'
-import '../assets/styles/landing.css'
-import teamData from './data/team.json'
-import stackData from './data/stack.json'
+import React from 'react';
+import '../assets/styles/landing.css';
+import teamData from './data/team.json';
+import stackData from './data/stack.json';
 
 export default function LandingPublic() {
   return (
@@ -22,8 +22,13 @@ export default function LandingPublic() {
         <section className="hero">
           <div className="container">
             <h1>TilinerOS — Aventuras en línea</h1>
-            <p className="muted">Plataforma de juego por turnos con mapas, combates y economías. Únete y juega con tus amigos.</p>
-            <p className="cta"><a href="#" className="btn large">Crear cuenta</a> <a href="#" className="link">Entrar</a></p>
+            <p className="muted">
+              Plataforma de juego por turnos con mapas, combates y economías. Únete y juega con tus amigos.
+            </p>
+            <div className="cta">
+              <a href="/sign-up" className="btn large">Crear cuenta</a>
+              <a href="/login" className="link large">Entrar</a>
+            </div>
           </div>
         </section>
 
@@ -91,5 +96,10 @@ export default function LandingPublic() {
         </div>
       </footer>
     </div>
-  )
+  );
 }
+
+
+
+
+
