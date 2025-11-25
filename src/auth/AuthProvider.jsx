@@ -23,14 +23,13 @@ export default function AuthProvider({ children }) {
   // login
   const login = async ({ email, username, password }) => {
   try {
-    console.log('AuthProvider.login - inicio', { email, username });
     const response = await axios.post("http://localhost:3000/api/v1/users/login", {
       email,
       username,
       password,
     });
 
-    const { access_token, user } = response.data || {};
+    const { access_token, user } = response.data;
 
     // Guardar token y usuario
     localStorage.setItem("token", access_token);
@@ -39,12 +38,9 @@ export default function AuthProvider({ children }) {
     // Configurar axios globalmente
     axios.defaults.headers.common["Authorization"] = `Bearer ${access_token}`;
     setUser(user);
-    console.log('AuthProvider.login - éxito', { user });
-    return { access_token, user };
   } catch (error) {
-    console.error("AuthProvider.login - error:", error);
-    // Propagar error para que el componente que llamó pueda manejarlo
-    throw error;
+    console.error("Error al iniciar sesión:", error);
+    alert("Credenciales incorrectas o error de conexión.");
   }
 };
 
