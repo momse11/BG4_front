@@ -1,28 +1,150 @@
-.input-field{
-  padding:0.8rem;
-  border-radius:var(--radius);
-  border:none;
-  background:rgba(110,231,183,0.15);
-  color:var(--text);
+
+@import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+
+/* Fondo y centrado general */
+.landing-pixel-root {
+  font-family: 'Press Start 2P', system-ui, sans-serif;
+  background-color: #0A0F00;
+  color: #F8E9D0;
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
-.btn.input-field{
-  background:var(--accent);
-  color:#042024;
-}
-
-.btn-acuosa {
-  padding: 0.8rem;
-  border-radius: var(--radius);
+/* Contenedor sin borde, mismo color que el fondo */
+.auth-card {
+  background-color: #0A0F00;   /* igual que el fondo */
+  color: #F8E9D0;
   border: none;
-  background: var(--accent);
-  color: #042024;
-  cursor: pointer;
-  font-weight: bold;
-  font-size: 1rem;
-  transition: 0.2s;
+  box-shadow: none;
+  padding: 24px 28px;
+  max-width: 420px;
+  width: 90%;
+  text-align: center;
 }
 
-.btn-acuosa:hover {
-  opacity: 0.85;
+/* Título */
+.auth-title {
+  margin: 0 0 1.2rem;
+  font-size: 0.9rem;
+  color: #C0A66C;
+}
+
+/* Formulario en columna */
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* Inputs verdes con tipografía pixelada */
+.auth-input {
+  background-color: #4A6931;
+  color: #F8E9D0;
+  border: 3px solid #C0A66C;
+  padding: 0.7rem 1rem;
+  font-family: 'Press Start 2P', system-ui, sans-serif;
+  font-size: 0.7rem;
+  outline: none;
+  box-shadow: 0 3px 0 #000000;
+}
+
+.auth-input::placeholder {
+  color: #F8E9D0;
+  opacity: 0.9;
+}
+
+.auth-input:focus {
+  box-shadow: 0 0 0 2px #F8E9D0;
+}
+
+/* Botón pixel amarillo */
+.pixel-button {
+  width: 100%;
+  padding: 0.8rem 1rem;
+  border: 3px solid #C0A66C;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  font-size: 0.7rem;
+  cursor: pointer;
+  image-rendering: pixelated;
+  box-shadow: 0 4px 0 #000000;
+  outline: none;
+  font-family: 'Press Start 2P', system-ui, sans-serif;
+}
+
+.auth-button-primary {
+  background-color: #C0A66C;
+  color: #0A0F00;
+}
+
+.auth-button-primary:hover {
+  background-color: #F8E9D0;
+}
+
+.pixel-button:active {
+  transform: translateY(2px);
+  box-shadow: 0 2px 0 #000000;
+}
+
+/* Stacks de botones / textos */
+.auth-buttons {
+  margin-top: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+}
+
+.auth-buttons-bottom {
+  margin-top: 2rem;
+}
+
+.auth-button-spaced {
+  margin-top: 0.7rem;
+}
+
+.auth-error {
+  color: #ff6b6b;
+  margin-top: 1rem;
+  font-size: 0.7rem;
+}
+
+.auth-success {
+  color: #4A6931;
+  margin-top: 1rem;
+  font-size: 0.7rem;
+}
+
+.auth-muted {
+  margin-top: 1rem;
+  color: #4A6931;
+  font-size: 0.7rem;
+}
+
+.auth-question {
+  margin: 0 0 0.5rem;
+  color: #C0A66C;
+  font-size: 0.7rem;
+}
+
+/* Responsive */
+@media (max-width: 480px) {
+  .auth-card {
+    padding: 20px 16px;
+  }
+
+  .auth-title {
+    font-size: 0.8rem;
+  }
+
+  .auth-input {
+    font-size: 0.65rem;
+  }
+
+  .pixel-button {
+    font-size: 0.6rem;
+  }
 }

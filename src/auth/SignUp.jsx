@@ -1,13 +1,15 @@
-import { useState } from 'react'
-import { useNavigate, Link } from 'react-router-dom'
+import { useState, useContext } from 'react'
+import { useNavigate } from 'react-router-dom'
 import api from '../utils/api'
 
-// estilos
+import { AuthContext } from './AuthProvider'
+
 import '../assets/styles/landing.css'
 import '../assets/styles/signup.css'
 
 export default function SignUp() {
   const navigate = useNavigate()
+  const { login } = useContext(AuthContext)
 
   const [formData, setFormData] = useState({
     username: '',
@@ -37,28 +39,35 @@ export default function SignUp() {
 
     try {
       const response = await api.post('/users', formData)
+
+      await login({
+        email: formData.email,
+        username: formData.username,
+        password: formData.password,
+      })
+
       setStatus({
         loading: false,
         success: `Cuenta creada con éxito. Bienvenido/a, ${response.data.username}!`,
         error: ''
       })
-      setFormData({ username: '', email: '', password: '' })
-      navigate('/login')
+
+      navigate('/landing')
     } catch (error) {
       const errorMsg =
-        error.response?.data?.error || 'Error al crear la cuenta. Intenta nuevamente.'
+        error.response?.data?.error || 'Error al crear la cuenta o iniciar sesión.'
       setStatus({ loading: false, success: '', error: errorMsg })
     }
   }
 
   return (
-    <div className="container" style={{ maxWidth: "460px" }}>
-      <div className="team-card" style={{ padding: "2rem", textAlign: "center" }}>
-        <h2 style={{ marginBottom: "1rem", color: "var(--accent)" }}>Crear cuenta</h2>
+    <div className="landing-pixel-root">
+      <div className="auth-card">
+        <h2 className="auth-title">Crear cuenta</h2>
 
         <form
           onSubmit={handleSubmit}
-          style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}
+          className="auth-form"
         >
           <input
             type="text"
@@ -67,7 +76,7 @@ export default function SignUp() {
             value={formData.username}
             onChange={handleChange}
             required
-            className="input-field"
+            className="auth-input"
           />
 
           <input
@@ -77,7 +86,7 @@ export default function SignUp() {
             value={formData.email}
             onChange={handleChange}
             required
-            className="input-field"
+            className="auth-input"
           />
 
           <input
@@ -87,27 +96,39 @@ export default function SignUp() {
             value={formData.password}
             onChange={handleChange}
             required
-            className="input-field"
+            className="auth-input"
           />
 
-          <button type="submit" disabled={status.loading} className="btn large input-field">
+          <button
+            type="submit"
+            disabled={status.loading}
+            className="pixel-button auth-button-primary"
+          >
             {status.loading ? 'Creando cuenta...' : 'Registrarse'}
           </button>
         </form>
 
         {status.success && (
-          <p style={{ color: 'var(--accent)', marginTop: '1rem' }}>{status.success}</p>
+          <p className="auth-success">{status.success}</p>
         )}
         {status.error && (
-          <p style={{ color: '#ff6b6b', marginTop: '1rem' }}>{status.error}</p>
+          <p className="auth-error">{status.error}</p>
         )}
 
-        <div style={{ marginTop: "2rem", display: "flex", flexDirection: "column", gap: "0.8rem" }}>
-          <button onClick={() => navigate('/login')} className="btn input-field">
-            Volver a Iniciar Sesión
+        <div className="auth-buttons auth-buttons-bottom">
+          <p className="auth-question">¿Tienes cuenta?</p>
+
+          <button
+            onClick={() => navigate('/login')}
+            className="pixel-button auth-button-primary"
+          >
+            Iniciar sesión
           </button>
 
-          <button onClick={() => navigate('/')} className="btn input-field">
+          <button
+            onClick={() => navigate('/')}
+            className="pixel-button auth-button-primary"
+          >
             Volver al inicio
           </button>
         </div>

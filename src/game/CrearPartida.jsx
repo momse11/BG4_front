@@ -92,7 +92,6 @@ export default function CrearPartida() {
           </p>
         )}
       </form>
-              {/* Botón volver */}
         <Link to="/landing">
           <button className="btn-secondary">Volver a mi página de usuario</button>
         </Link>

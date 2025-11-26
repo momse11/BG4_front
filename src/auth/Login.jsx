@@ -3,7 +3,7 @@ import { AuthContext } from './AuthProvider'
 import { useNavigate, Link } from 'react-router-dom'
 
 import '../assets/styles/landing.css'
-import '../assets/styles/signup.css' 
+import '../assets/styles/signup.css'
 
 export default function Login() {
   const { user, login, logout } = useContext(AuthContext)
@@ -37,37 +37,44 @@ export default function Login() {
   }
 
   return (
-    <div className="container" style={{ maxWidth: "460px" }}>
-      <div className="team-card" style={{ padding: "2rem", textAlign: "center" }}>
-
+    <div className="landing-pixel-root">
+      <div className="auth-card">
         {user ? (
           <>
-            <h2 style={{ marginBottom: "1rem", color: "var(--accent)" }}>
+            <h2 className="auth-title">
               Hola, {user.username || user.email}
             </h2>
 
-            <button onClick={logout} className="btn input-field" style={{ width: "100%" }}>
-              Cerrar sesión
-            </button>
-            <button onClick={() => navigate('/landing')} className="btn input-field" style={{ width: "100%" }}>
-              Página de Usuario
-            </button>
+            <div className="auth-buttons">
+              <button
+                onClick={logout}
+                className="pixel-button auth-button-primary"
+              >
+                Cerrar sesión
+              </button>
 
-            <button
-              onClick={() => navigate('/')}
-              className="btn input-field"
-              style={{ marginTop: "1rem", width: "100%" }}
-            >
-              Volver al inicio
-            </button>
+              <button
+                onClick={() => navigate('/landing')}
+                className="pixel-button auth-button-primary"
+              >
+                Ir a Landing-Page
+              </button>
+
+              <button
+                onClick={() => navigate('/')}
+                className="pixel-button auth-button-primary"
+              >
+                Volver a la portada
+              </button>
+            </div>
           </>
         ) : (
           <>
-            <h2 style={{ marginBottom: "1rem", color: "var(--accent)" }}>Iniciar sesión</h2>
+            <h2 className="auth-title">Iniciar sesión</h2>
 
             <form
               onSubmit={handleSubmit}
-              style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}
+              className="auth-form"
             >
               <input
                 type="email"
@@ -76,7 +83,7 @@ export default function Login() {
                 value={formData.email}
                 onChange={handleChange}
                 required
-                className="input-field"
+                className="auth-input"
               />
 
               <input
@@ -86,30 +93,32 @@ export default function Login() {
                 value={formData.password}
                 onChange={handleChange}
                 required
-                className="input-field"
+                className="auth-input"
               />
 
-              <button type="submit" className="btn large input-field">
-                Entrar
+              <button
+                type="submit"
+                className="pixel-button auth-button-primary"
+              >
+                Acceder
               </button>
             </form>
 
             {error && (
-              <p style={{ color: '#ff6b6b', marginTop: '1rem' }}>{error}</p>
+              <p className="auth-error">{error}</p>
             )}
 
-            <p style={{ marginTop: "1rem", color: "var(--muted)" }}>¿No tienes cuenta?</p>
+            <p className="auth-muted">¿No tienes cuenta?</p>
 
             <Link to="/sign-up">
-              <button className="btn input-field" style={{ marginTop: "0.5rem", width: "100%" }}>
+              <button className="pixel-button auth-button-primary auth-button-spaced">
                 Registrarse
               </button>
             </Link>
 
             <button
               onClick={() => navigate('/')}
-              className="btn input-field"
-              style={{ marginTop: "1rem", width: "100%" }}
+              className="pixel-button auth-button-primary auth-button-spaced"
             >
               Volver al inicio
             </button>
