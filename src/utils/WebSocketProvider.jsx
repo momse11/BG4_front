@@ -59,7 +59,24 @@ export function WebSocketProvider({ children }) {
           try {
             await api.post(`/partidas/${prev}/leave`);
           } catch (e) {
-            console.debug('Auto-leave failed', e?.response?.data || e?.message || e);
+            console.debug('Auto-leave api.post failed, attempting fallback fetch', e?.response?.data || e?.message || e);
+              try {
+              const token = localStorage.getItem('token');
+              // try a raw fetch with keepalive and Authorization header as fallback
+              // Use full API base URL (includes /api/v1) to hit the backend CORS-enabled route
+              await fetch(`${api.defaults.baseURL}/partidas/${prev}/leave`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  ...(token ? { Authorization: `Bearer ${token}` } : {}),
+                },
+                body: null,
+                keepalive: true,
+              });
+              console.debug('Auto-leave fallback fetch sent');
+            } catch (err2) {
+              console.debug('Auto-leave fallback fetch failed', err2?.message || err2);
+            }
           }
         })();
       }

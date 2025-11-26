@@ -1,6 +1,33 @@
-body {
-  font-family: sans-serif;
-  background-color: #f8f9fa;
+/* Tipografía retro debe estar ARRIBA DEL TODO */
+@import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+
+/* Reseteo */
+html, body, #root {
   margin: 0;
-  padding: 2rem;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  background-color: #000000 !important;
+  overflow: hidden;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+/* Fondo del body */
+body {
+  background-color: #000000 !important;
+  margin: 0;
+  padding: 0;
+}
+
+/* Clase retro 8 bits */
+.pixel-font {
+  font-family: 'Press Start 2P', cursive !important;
+  letter-spacing: 1px;
+  text-transform: none; /* asegura que no se alteren caracteres */
+  font-smooth: never;
+  -webkit-font-smoothing: none;
+  -moz-osx-font-smoothing: grayscale;
 }

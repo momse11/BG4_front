@@ -1,6 +1,7 @@
 [
   {"title":"Frontend","chip":"React","description":"React + Vite para interfaz rápida y componentes reutilizables."},
-  {"title":"Backend","chip":"Koa.js","description":"Koa para API ligera y middleware; WebSockets para tiempo real."},
+  {"title":"Backend","chip":"Koa.js","description":"Koa para API ligera y middleware, Swagger y OpenAPi para la documentación."},
   {"title":"Comunicación en Tiempo Real","chip":"WebSocket","description":"Sincronización de partidas y notificaciones en vivo."},
   {"title":"Base de Datos","chip":"PostgreSQL + Sequelize","description":"Modelado relacional y migraciones automáticas con Sequelize."}
 ]
+

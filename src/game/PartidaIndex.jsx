@@ -3,6 +3,7 @@
 import { useEffect, useState, useContext } from "react";
 import { AuthContext } from "../auth/AuthProvider";
 import { useNavigate } from "react-router-dom";
+import "../assets/styles/crearpartida.css"; // Importar estilos
 
 export default function PartidaIndex() {
   const { getPartidas, joinPartida } = useContext(AuthContext);
@@ -36,15 +37,27 @@ export default function PartidaIndex() {
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", padding: "20px" }}>
-      <h2>Partidas Disponibles</h2>
-      {mensaje && <p style={{ color: "green" }}>{mensaje}</p>}
-      {error && <p style={{ color: "red" }}>{error}</p>}
-      <div style={{ display: "flex", flexDirection: "column", gap: "10px", width: "400px" }}>
+    <div className="crearpartida-wrapper">
+      <div className="crearpartida-card">
+        <h2>Partidas Disponibles</h2>
+
+        {mensaje && <div className="msg-success">{mensaje}</div>}
+        {error && <div className="msg-error">{error}</div>}
+
         {partidas.map((p) => (
-          <div key={p.id} style={{ background: "#fff", padding: "10px", borderRadius: "8px", border: "1px solid #ccc" }}>
+          <div
+            key={p.id}
+            style={{
+              marginBottom: "1rem",
+              padding: "0.8rem",
+              borderRadius: "8px",
+              border: "1px solid rgba(110, 231, 183, 0.15)",
+              background: "rgba(2,6,12,0.2)",
+            }}
+          >
             <strong>Partida #{p.id}</strong>
             <div>Privada: {p.privado ? "Sí 🔒" : "No 🔓"}</div>
+
             {p.privado && (
               <input
                 type="password"
@@ -53,17 +66,26 @@ export default function PartidaIndex() {
                 onChange={(e) =>
                   setContraseñas({ ...contraseñas, [p.id]: e.target.value })
                 }
-                style={{ marginTop: "5px", padding: "4px" }}
+                className="input-field"
               />
             )}
+
             <button
               onClick={() => handleJoin(p)}
-              style={{ marginTop: "8px", padding: "6px", cursor: "pointer" }}
+              className="btn-acuosa"
+              style={{ marginTop: "0.5rem" }}
             >
               Unirse
             </button>
           </div>
         ))}
+
+        <button
+          onClick={() => navigate("/")}
+          className="btn-secondary"
+        >
+          Volver a Landing
+        </button>
       </div>
     </div>
   );

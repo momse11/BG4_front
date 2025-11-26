@@ -48,54 +48,15 @@ export default function Lobby() {
   // cuando el componente se desmonte (usuario sale de la ruta del lobby), intentar eliminar/salir de la partida
   // Protegemos la ruta: antes de recargar/cerrar o navegar fuera, pedimos confirmación.
   // Usamos sendBeacon para notificar al servidor si el usuario confirma la salida.
+  // Previously we added a beforeunload handler and intercepted link clicks
+  // to try to notify the server on unload via sendBeacon and ask for
+  // confirmation. That caused UX problems (native confirm dialogs) and
+  // could trigger network requests to non-API routes that hang the
+  // browser spinner. The WebSocketProvider now performs an auto-leave
+  // fallback; keep this effect removed to avoid sendBeacon/preflight issues.
   useEffect(() => {
-    const beforeUnloadHandler = (e) => {
-      try {
-        // mostrar diálogo nativo de confirmación
-        e.preventDefault()
-        e.returnValue = ''
-        // avisar al servidor (sendBeacon funciona en unload)
-        if (navigator.sendBeacon) {
-          try { navigator.sendBeacon(`${window.location.origin}/partidas/${id}/leave`, '') } catch (err) {}
-        }
-        return ''
-      } catch (err) {
-        // noop
-      }
-    }
-
-    // Interceptar clicks en enlaces para confirmar navegación SPA
-    // Sólo preguntar si el enlace realmente cambia de pathname (evitar triggers por fragment/hash o enlaces que no navegan)
-    const clickHandler = (ev) => {
-      try {
-        const a = ev.target.closest && ev.target.closest('a')
-        if (!a) return
-        const href = a.getAttribute('href') || ''
-        if (!href) return
-        // ignorar anchors puras y fragmentos
-        if (href.startsWith('#')) return
-        // permitir opt-out con data-no-confirm
-        if (a.dataset && a.dataset.noConfirm) return
-        // construir URL absoluta para comparar pathname
-        let url
-        try { url = new URL(href, window.location.origin) } catch (err) { return }
-        // si la navegación sería al mismo pathname, no preguntar
-        if (url.pathname === window.location.pathname) return
-        // ahora sí: confirmar
-        const ok = window.confirm('Seguro que quieres salir del lobby? Esto te sacará de la partida.')
-        if (!ok) ev.preventDefault()
-      } catch (err) {
-        // noop
-      }
-    }
-
-    window.addEventListener('beforeunload', beforeUnloadHandler)
-    document.addEventListener('click', clickHandler, true)
-
-    return () => {
-      window.removeEventListener('beforeunload', beforeUnloadHandler)
-      document.removeEventListener('click', clickHandler, true)
-    }
+    // noop: intentionally left blank
+    return () => {}
   }, [id])
 
   const openSelectClase = () => setShowClase(true)
@@ -158,24 +119,42 @@ export default function Lobby() {
                 if (!user) { navigate('/partidas'); return }
                 const meId = Number(user.id)
                 const creatorId = partida ? Number(partida.creador_id) : null
+                // Creator: attempt to delete the partida
                 if (creatorId && meId === creatorId) {
                   const ok = window.confirm('Eres el creador. ¿Borrar la partida y salir?')
                   if (!ok) return
-                  await api.delete(`/partidas/${id}`)
-                  navigate('/partidas')
-                  // asegurar recarga del cliente que sale para limpiar sockets locales
-                  setTimeout(() => { try { window.location.reload() } catch (e) {} }, 150)
+                  try {
+                    const resp = await api.delete(`/partidas/${id}`)
+                    // accept 200/204 as success
+                    if (resp && (resp.status === 200 || resp.status === 204)) {
+                      // navigate away; server WS will notify other clients
+                      navigate('/partidas')
+                      return
+                    }
+                    // fallback: if response not OK, show message
+                    alert('No se pudo eliminar la partida. Intenta nuevamente.')
+                  } catch (err) {
+                    console.error('Error deleting partida', err)
+                    alert(err?.response?.data?.error || 'Error eliminando la partida')
+                  }
                 } else {
                   const ok = window.confirm('¿Salir de la partida?')
                   if (!ok) return
-                  await api.post(`/partidas/${id}/leave`)
-                  navigate('/partidas')
-                  // asegurar recarga del cliente que sale para limpiar sockets locales
-                  setTimeout(() => { try { window.location.reload() } catch (e) {} }, 150)
+                  try {
+                    const resp = await api.post(`/partidas/${id}/leave`)
+                    if (resp && (resp.status === 200 || resp.status === 204)) {
+                      navigate('/partidas')
+                      return
+                    }
+                    alert('No se pudo salir de la partida. Intenta nuevamente.')
+                  } catch (err) {
+                    console.error('Error leaving partida', err)
+                    alert(err?.response?.data?.error || 'Error al salir de la partida')
+                  }
                 }
               } catch (e) {
-                console.error('Error leaving/deleting partida', e)
-                alert(e?.response?.data?.error || 'Error al salir de la partida')
+                console.error('Unexpected error leaving/deleting partida', e)
+                alert('Error inesperado al intentar salir')
               }
             }}>Volver</button>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
