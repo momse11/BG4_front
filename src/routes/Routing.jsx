@@ -1,20 +1,19 @@
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
-
+import { Routes, Route } from 'react-router-dom';
 import Landing from '../landing/Landing-Page';
 import LandingPublic from '../landing/LandingPublic';
 import Login from '../auth/Login';
 import SignUp from '../auth/SignUp';
-import CrearPartida from "../game/CrearPartida";
+import CrearPartida from '../game/CrearPartida';
 import Lobby from '../partida/Lobby';
 import ProtectedRoute from './ProtectedRoute';
-import PartidaIndex from "../game/PartidaIndex"; 
+import PartidaIndex from '../game/PartidaIndex';
+import PartidaEmpezada from '../partida/PartidaEmpezada';
 
 // Página del mapa
-import MapViewWrapper from "../tablero/pages/MapViewWrapper";
+import MapViewWrapper from '../tablero/pages/MapViewWrapper';
 
 export default function Routing() {
   return (
-    <BrowserRouter>
       <Routes>
 
         {/* Landing / Auth */}
@@ -46,6 +45,16 @@ export default function Routing() {
           }
         />
 
+        {/* Partida empezada */}
+        <Route
+          path="/partida/:id/empezada"
+          element={
+            <ProtectedRoute>
+              <PartidaEmpezada />
+            </ProtectedRoute>
+          }
+        />
+
         {/* MAPA — Vista del tablero */}
         <Route
           path="/partida/:partidaId/mapa/:mapaId"
@@ -57,6 +66,5 @@ export default function Routing() {
         />
 
       </Routes>
-    </BrowserRouter>
   );
 }
