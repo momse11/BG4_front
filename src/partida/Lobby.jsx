@@ -159,7 +159,21 @@ export default function Lobby() {
             }}>Volver</button>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <div style={{ fontSize: 14 }}>{jugadores.length}/4 jugadores</div>
-              <button disabled={!isCreator || !allSelected} onClick={() => navigate(`/partida/${id}/empezada`)}>Empezar</button>
+              <button disabled={!isCreator || !allSelected} onClick={async () => {
+                try {
+                  // Call backend to create mapa and initial jugadas
+                  const resp = await api.post(`/partidas/${id}/start`);
+                  if (resp && resp.status === 200 && resp.data?.mapaId) {
+                    const mapaId = resp.data.mapaId;
+                    navigate(`/partida/${id}/mapa/${mapaId}`);
+                    return;
+                  }
+                  alert('No se pudo iniciar la partida. Intenta nuevamente.');
+                } catch (e) {
+                  console.error('Error starting partida', e);
+                  alert(e?.response?.data?.error || 'Error iniciando la partida');
+                }
+              }}>Empezar</button>
             </div>
           </div>
         </>

@@ -44,6 +44,16 @@ export function usePartidaWS(partidaId, jugador) {
             try { window.location.href = '/partidas'; } catch (e) { /* noop */ }
             return;
           }
+          if (data && data.type === 'PARTIDA_STARTED') {
+            try {
+              const mapaId = data.mapaId || data.mapa_id || null;
+              if (mapaId) {
+                console.debug('[usePartidaWS] PARTIDA_STARTED received — redirecting to map', partidaId, mapaId);
+                try { window.location.href = `/partida/${partidaId}/mapa/${mapaId}`; } catch (e) { /* noop */ }
+              }
+            } catch (e) { /* noop */ }
+            return;
+          }
           if (data.type === 'UPDATE_PLAYERS') {
             // dedupe jugadores by id to avoid duplicate cards
             const arr = Array.isArray(data.jugadores) ? data.jugadores : [];
