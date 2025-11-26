@@ -1,34 +1,57 @@
+// src/components/SelectPersonajeModal.jsx
 import { useEffect, useState } from 'react'
 import { getPersonajesByClase as _getPersonajesByClase } from '../utils/api'
 
-export default function SelectPersonajeModal({ clase, onClose, onSelect }) {
+/**
+ * props:
+ * - clase: string
+ * - onClose: function -> cerrar completamente el modal de personaje
+ * - onBackToClase: function -> volver al modal de clases
+ * - onSelect: function(personajeId | nombre)
+ * - takenPersonajeIds?: array
+ */
+export default function SelectPersonajeModal({
+  clase,
+  onClose,
+  onBackToClase,
+  onSelect,
+  takenPersonajeIds = []
+}) {
   const [personajes, setPersonajes] = useState([])
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState(null)
 
-  const safeGetPersonajesByClase = typeof _getPersonajesByClase === 'function' ? _getPersonajesByClase : async () => []
+  const safeGetPersonajesByClase =
+    typeof _getPersonajesByClase === 'function'
+      ? _getPersonajesByClase
+      : async () => []
 
   useEffect(() => {
     let mounted = true
     if (!clase) {
       setPersonajes([])
       setLoading(false)
-      return () => { mounted = false }
+      return () => {
+        mounted = false
+      }
     }
+
     ;(async () => {
-        try {
+      try {
         const data = await safeGetPersonajesByClase(clase)
         if (!mounted) return
         if (!Array.isArray(data)) {
           console.warn('getPersonajesByClase returned non-array:', data)
           setPersonajes([])
         } else {
-          // dedupe personajes by id or nombre to avoid duplicate cards
           const seen = new Set()
           const uniq = []
           data.forEach((p) => {
             const key = String(p?.id ?? p?.nombre ?? '')
-            if (!seen.has(key)) { seen.add(key); uniq.push(p) }
+            if (!seen.has(key)) {
+              seen.add(key)
+              uniq.push(p)
+            }
           })
           setPersonajes(uniq)
         }
@@ -39,47 +62,153 @@ export default function SelectPersonajeModal({ clase, onClose, onSelect }) {
         if (mounted) setLoading(false)
       }
     })()
-    return () => { mounted = false }
+
+    return () => {
+      mounted = false
+    }
   }, [clase])
+
+  const handleClose = () => {
+    if (typeof onClose === 'function') onClose()
+  }
+
+  const handleBackToClase = () => {
+    if (typeof onBackToClase === 'function') {
+      onBackToClase()
+    } else {
+      handleClose()
+    }
+  }
+
+  const personajesToShow = (personajes || []).slice(0, 3)
+
+  const takenIds = Array.isArray(takenPersonajeIds)
+    ? takenPersonajeIds.map((v) => String(v))
+    : []
+
+  const handleSelect = (p) => {
+    const key = String(p.id ?? p.nombre)
+    if (takenIds.includes(key)) {
+      return
+    }
+    if (typeof onSelect === 'function') {
+      onSelect(p.id ?? p.nombre)
+    }
+  }
+
+  const getPortraitSrc = (p) => {
+    const nombre = p?.nombre ? String(p.nombre) : 'Ninguno'
+    try {
+      const url = new URL(
+        `../assets/personajes/${nombre}.png`,
+        import.meta.url
+      ).href
+      return url
+    } catch (e) {
+      try {
+        const fallback = new URL(
+          '../assets/personajes/Ninguno.png',
+          import.meta.url
+        ).href
+        return fallback
+      } catch {
+        return ''
+      }
+    }
+  }
 
   if (loadError) {
     return (
-      <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1001 }}>
-        <div style={{ background: '#fff', padding: 20, borderRadius: 8, width: 600 }}>
-          <h3>Error cargando personajes — {clase}</h3>
-          <div style={{ color: 'red' }}>{loadError}</div>
-          <div style={{ marginTop: 12, textAlign: 'right' }}>
-            <button onClick={() => (typeof onClose === 'function' ? onClose() : null)}>Cerrar</button>
-          </div>
+      <div className="lobby-modal-overlay" onClick={handleClose}>
+        <div
+          className="lobby-modal character-modal"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <h2 className="character-modal-title">
+            Error cargando personajes — {clase}
+          </h2>
+          <p className="character-modal-error">{loadError}</p>
+          <button
+            type="button"
+            className="pixel-button character-back-button"
+            onClick={handleBackToClase}
+          >
+            Volver
+          </button>
         </div>
       </div>
     )
   }
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1001 }}>
-      <div style={{ background: '#fff', padding: 20, borderRadius: 8, width: 800, maxHeight: '80vh', overflow: 'auto' }}>
-        <h3>Personajes — {clase}</h3>
-        {loading ? <p>Cargando...</p> : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 12 }}>
-            {(!personajes || personajes.length === 0) && <p>No hay personajes para esta clase</p>}
-            {Array.isArray(personajes) && personajes.map((p) => (
-              <div key={p.id ?? p.nombre} style={{ border: '1px solid #ddd', padding: 8, borderRadius: 6, textAlign: 'center' }}>
-                <div style={{ height: 120, background: '#f5f5f5', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  {p?.sprite ? <img src={p.sprite} alt={p.nombre} style={{ maxHeight: '100%', maxWidth: '100%' }} /> : <div style={{ padding: 8 }}>{p.nombre}</div>}
-                </div>
-                <div style={{ marginTop: 8 }}>
-                  <div style={{ fontWeight: '600' }}>{p.nombre}</div>
-                  <div style={{ fontSize: 12 }}>{p.clase}</div>
-                  <button style={{ marginTop: 8 }} onClick={() => (typeof onSelect === 'function' ? onSelect(p.id ?? p.nombre) : console.warn('onSelect not function', onSelect))}>Seleccionar</button>
-                </div>
-              </div>
-            ))}
+    <div className="lobby-modal-overlay" onClick={handleClose}>
+      <div
+        className="lobby-modal character-modal"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 className="character-modal-title">Selecciona personaje</h2>
+
+        {loading ? (
+          <p className="character-modal-loading">Cargando...</p>
+        ) : personajesToShow.length === 0 ? (
+          <p className="character-modal-loading">
+            No hay personajes para esta clase
+          </p>
+        ) : (
+          <div className="character-row">
+            {personajesToShow.map((p, index) => {
+              const key = String(p.id ?? p.nombre)
+              const isTaken = takenIds.includes(key)
+
+              return (
+                <button
+                  key={p.id ?? p.nombre ?? index}
+                  type="button"
+                  className={
+                    'character-card character-card-' +
+                    index +
+                    (isTaken ? ' character-card-taken' : '')
+                  }
+                  onClick={() => handleSelect(p)}
+                  disabled={isTaken}
+                >
+                  <div className="character-image-wrap">
+                    <img src={getPortraitSrc(p)} alt={p.nombre} />
+                  </div>
+
+                  <div className="character-tooltip">
+                    <p>
+                      <strong>Nombre:</strong> {p.nombre}
+                    </p>
+                    {p.raza && (
+                      <p>
+                        <strong>Raza:</strong> {p.raza}
+                      </p>
+                    )}
+                    {p.clase && (
+                      <p>
+                        <strong>Clase:</strong> {p.clase}
+                      </p>
+                    )}
+                    {p.descripcion && (
+                      <p className="character-tooltip-desc">
+                        {p.descripcion}
+                      </p>
+                    )}
+                  </div>
+                </button>
+              )
+            })}
           </div>
         )}
-        <div style={{ marginTop: 12, textAlign: 'right' }}>
-          <button onClick={() => (typeof onClose === 'function' ? onClose() : null)}>Cerrar</button>
-        </div>
+
+        <button
+          type="button"
+          className="pixel-button character-back-button"
+          onClick={handleBackToClase}
+        >
+          Volver
+        </button>
       </div>
     </div>
   )

@@ -1,0 +1,418 @@
+@import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+
+.lobby-root {
+  font-family: 'Press Start 2P', system-ui, sans-serif;
+  background-color: #0A0F00;
+  color: #F8E9D0;
+  min-height: 100vh;
+  width: 100vw;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.lobby-card {
+  text-align: center;
+  max-width: 900px;
+  width: 100%;
+}
+
+/* Títulos */
+.lobby-title {
+  font-size: 1rem;
+  color: #C0A66C;
+  margin: 0 0 4px;
+}
+
+.lobby-subtitle {
+  font-size: 0.7rem;
+  color: #4A6931;
+  margin: 0 0 20px;
+}
+
+.lobby-loading {
+  font-size: 0.7rem;
+}
+
+/* Slots de jugadores */
+.lobby-slots {
+  display: flex;
+  justify-content: center;
+  gap: 18px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+.lobby-slot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 140px;
+}
+
+/* Marco + retrato: tamaño original, centrados uno sobre otro */
+.lobby-frame-wrapper {
+  position: relative;
+  display: inline-block;
+}
+
+/* Retrato detrás del marco, sin escalado */
+.lobby-portrait {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  image-rendering: pixelated;
+  z-index: 1;
+}
+
+/* Marco delante, sin escalado */
+.lobby-frame {
+  position: relative;
+  display: block;
+  image-rendering: pixelated;
+  z-index: 2;
+}
+
+/* Nombre de usuario bajo cada marco */
+.lobby-slot-username {
+  margin-top: 8px;
+  font-size: 0.6rem;
+  color: #F8E9D0;
+}
+
+/* Botón corto "Personaje", amarillo */
+.lobby-slot-button {
+  margin-top: 6px;
+  font-size: 0.55rem;
+  padding: 0.35rem 0.6rem;
+  width: auto;
+}
+
+/* Estado general */
+.lobby-status {
+  margin-top: 8px;
+  font-size: 0.6rem;
+  color: #C0A66C;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: center;
+}
+
+.lobby-status-helper {
+  font-size: 0.55rem;
+  color: #4A6931;
+}
+
+/* Botones Empezar / Volver apilados, mismo formato */
+.lobby-actions {
+  margin-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: center;
+  max-width: 260px;
+  width: 100%;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.lobby-button-secondary {
+  width: 100%;
+  background-color: #4A6931;
+  color: #0A0F00;
+}
+
+/* estado disabled del botón Empezar */
+.lobby-button-secondary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Responsivo lobby */
+@media (max-width: 600px) {
+  .lobby-slot-username {
+    font-size: 0.55rem;
+  }
+
+  .lobby-slot-button {
+    font-size: 0.5rem;
+  }
+}
+
+/* ---------- MODAL: BASE ---------- */
+
+.lobby-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.8);  /* fondo oscuro */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.lobby-modal {
+  background-color: #F8E9D0;
+  color: #0A0F00;
+  border: 4px solid #C0A66C;
+  box-shadow:
+    0 0 0 4px #4A6931,
+    0 8px 0 #000000;
+  padding: 20px 24px;
+  max-width: 820px;
+  width: 100%;
+  text-align: center;
+  font-family: 'Press Start 2P', system-ui, sans-serif;
+}
+
+/* ---------- MODAL: SELECCIÓN DE CLASE ---------- */
+
+.class-modal-title {
+  font-size: 0.9rem;
+  margin: 0 0 14px;
+  color: #4A6931;
+}
+
+/* Grid 6 x 2 (12 clases) */
+.class-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 12px;
+  margin: 10px 0 16px;
+}
+
+/* Botón de clase: amarillo, texto verde pixelado */
+.class-button {
+  background-color: #C0A66C;    /* amarillo */
+  border: 3px solid #4A6931;
+  box-shadow: 0 3px 0 #000000;
+  padding: 6px 4px 8px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  image-rendering: pixelated;
+  outline: none;
+  font-family: 'Press Start 2P', system-ui, sans-serif;
+}
+
+.class-button:active {
+  transform: translateY(2px);
+  box-shadow: 0 1px 0 #000000;
+}
+
+/* Contenedor de imagen: mismo tamaño para todas */
+.class-button-img-wrap {
+  width: 72px;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+/* Imagen centrada dentro del botón, respetando proporciones */
+.class-button-img-wrap img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  image-rendering: pixelated;
+}
+
+/* Nombre de la clase debajo */
+.class-button-label {
+  margin-top: 4px;
+  font-size: 0.55rem;
+  color: #4A6931;   /* verde */
+}
+
+/* Botón cerrar abajo */
+.class-close-button {
+  margin-top: 8px;
+  width: auto;
+  padding-inline: 1.2rem;
+}
+
+/* Responsive clases */
+@media (max-width: 900px) {
+  .class-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+@media (max-width: 600px) {
+  .lobby-modal {
+    max-width: 95%;
+    padding: 16px;
+  }
+
+  .class-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .class-button-img-wrap {
+    width: 64px;
+    height: 48px;
+  }
+}
+
+/* ---------- MODAL: SELECCIÓN DE PERSONAJE ---------- */
+
+.character-modal {
+  background-color: #000000;   /* amarillo */
+  border: 3px solid #000000;
+  box-shadow: 0 3px 0 #000000;
+  padding: 24px 28px 28px;
+  max-width: 820px;
+  width: 100%;
+  text-align: center;
+  font-family: 'Press Start 2P', system-ui, sans-serif;
+  position: relative;
+  overflow: visible; 
+}
+
+.character-modal-title {
+  font-size: 0.9rem;
+  margin: 0 0 150px; 
+  color: #C0A66C;
+}
+
+.character-modal-loading,
+.character-modal-error {
+  font-size: 0.7rem;
+  margin: 12px 0 16px;
+}
+
+.character-row {
+  position: relative;
+  margin: 0 auto 20px;  
+  width: 100%;
+  max-width: 520px;
+  height: 320px;       
+  overflow: visible;
+}
+
+.character-card {
+  position: absolute;
+  background: transparent;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  outline: none;
+  z-index: 1;          
+}
+
+.character-card-taken {
+  opacity: 0.7;       
+  cursor: not-allowed;
+}
+
+.character-card-taken .character-image-wrap::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: rgba(10, 15, 0, 0.7); 
+  pointer-events: none;
+}
+
+.character-card:disabled {
+  pointer-events: none;
+}
+
+.character-card-0 {
+  left: 20%;
+  top: 30%;
+  transform: translate(-50%, -50%);
+}
+
+.character-card-1 {
+  left: 50%;
+  top: 60%;
+  transform: translate(-50%, -50%);
+  z-index: 2;   
+}
+
+.character-card-2 {
+  left: 80%;
+  top: 30%;
+  transform: translate(-50%, -50%);
+}
+
+.character-card:hover {
+  z-index: 10;
+}
+
+.character-image-wrap {
+  display: inline-block;
+  image-rendering: pixelated;
+  position: relative;    
+}
+
+.character-image-wrap img {
+  display: block;
+  image-rendering: pixelated;
+  width: auto;
+  height: auto;
+}
+
+.character-tooltip {
+  position: absolute;
+  left: calc(100% + 10px);  
+  top: 50%;
+  transform: translateY(-50%);
+  width: 260px;
+  background-color: #0A0F00;
+  border: 2px solid #C0A66C;
+  color: #F8E9D0;
+  padding: 8px;
+  font-size: 0.5rem;
+  text-align: left;
+  z-index: 9999;           
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.15s ease-out, visibility 0.15s ease-out;
+  pointer-events: none;
+  font-family: 'Press Start 2P', system-ui, sans-serif;
+}
+
+.character-card:hover .character-tooltip {
+  opacity: 1;
+  visibility: visible;
+}
+
+.character-tooltip p {
+  margin: 2px 0;
+}
+
+.character-tooltip-desc {
+  margin-top: 4px;
+}
+
+.character-back-button {
+  margin-top: 50px;
+  width: auto;
+  padding-inline: 1.2rem;
+  position: relative;  
+  z-index: 20;          
+}
+
+@media (max-width: 640px) {
+  .character-modal {
+    max-width: 95%;
+    padding: 18px;
+  }
+
+  .character-row {
+    height: 320px;
+    max-width: 380px;
+  }
+
+  .character-tooltip {
+    width: 220px;
+    font-size: 0.45rem;
+  }
+}
