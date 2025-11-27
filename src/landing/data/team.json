@@ -1,0 +1,5 @@
+[
+  {"name":"Karla Rivero","role":"Frontend y UI/UX","skills":"Diseño de juego, coordinación","initials":"KR"},
+  {"name":"Montserrat Contreras","role":"Backend y diseño","skills":"Diseño de juego, modelación de bases de datos","initials":"MC"},
+  {"name":"Joaquín Salas","role":"Backend","skills":"Node.js, Koa, WebSockets, PostgreSQL.","initials":"JS"}
+]
