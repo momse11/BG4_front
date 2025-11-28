@@ -1,6 +1,6 @@
 import PartySprites from "./PartySprites";
 import cofreIcon from "../../assets/tablero/Cofre.png";
-import fogataIcon from "../../assets/tablero/Fogata.png";
+import fogataIcon from "../../assets/tablero/Fogata.gif";
 import cartelIcon from "../../assets/tablero/Cartel.png";
 
 export default function Grid({ casillas, pos, onTileClick, partySprites }) {

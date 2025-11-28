@@ -1,4 +1,4 @@
-// maneja los websockets (de partida nomas por ahora)
+// src/utils/ws.js
 import { useEffect, useState, useRef } from "react";
 
 export function usePartidaWS(partidaId, jugador) {
@@ -8,7 +8,7 @@ export function usePartidaWS(partidaId, jugador) {
   useEffect(() => {
     // solo conectamos si hay partida y jugador válido
     if (!partidaId || !jugador || !jugador.id) {
-      setJugadores([]);
+      // NO vaciamos jugadores aquí para no "desaparecer" visualmente
       return;
     }
 
@@ -56,14 +56,12 @@ export function usePartidaWS(partidaId, jugador) {
           const data = JSON.parse(msg.data);
           console.debug("[usePartidaWS] WS message", data);
 
-          if (data && data.type === 'PARTIDA_DELETED') {
+          if (data && data.type === "PARTIDA_DELETED") {
             console.debug(
-              '[usePartidaWS] PARTIDA_DELETED received — redirecting to /landing'
+              "[usePartidaWS] PARTIDA_DELETED received — redirecting to /landing"
             );
             try {
-              // puedes usar replace para que no se pueda volver "atrás" al lobby borrado
-              window.location.replace('/landing');
-              // si prefieres, window.location.href = '/landing';
+              window.location.replace("/landing");
             } catch (e) {
               /* noop */
             }
@@ -87,22 +85,59 @@ export function usePartidaWS(partidaId, jugador) {
 
           if (data.type === "UPDATE_PLAYERS") {
             const arr = Array.isArray(data.jugadores) ? data.jugadores : [];
+
+            // 1) normalizamos y quitamos duplicados por id
             const map = {};
             arr.forEach((j) => {
-              if (j && j.id !== undefined) map[String(j.id)] = j;
+              if (j && j.id !== undefined) {
+                map[String(j.id)] = j;
+              }
             });
-            const unique = Object.values(map);
+            let unique = Object.values(map);
+
+            // 2) Aseguramos que el jugador actual esté presente mientras
+            //    el componente siga montado (defensa ante bugs del backend)
+            if (jugador && jugador.id !== undefined) {
+              const meId = Number(jugador.id);
+              const hasMe = unique.some((j) => Number(j.id) === meId);
+
+              if (!hasMe) {
+                console.warn(
+                  "[usePartidaWS] UPDATE_PLAYERS sin el jugador actual. Reinyectando localmente.",
+                  { meId, unique }
+                );
+
+                unique = [
+                  ...unique,
+                  {
+                    id: jugador.id,
+                    username: jugador.username,
+                    selected_personaje_id: null,
+                    selected_personaje: null,
+                  },
+                ];
+              }
+            }
+
             setJugadores(unique);
           }
 
-          // opcional: si tu backend manda eventos de “salió un jugador”
           if (data.type === "PLAYER_LEFT") {
             const leftId = data.jugadorId || data.jugador_id;
-            if (leftId !== undefined) {
-              setJugadores((prev) =>
-                prev.filter((j) => Number(j.id) !== Number(leftId))
+            if (leftId === undefined) return;
+
+            // si el que "salió" soy yo, dejamos que la navegación
+            // saque al usuario del lobby; no lo borramos visualmente aquí
+            if (jugador && Number(leftId) === Number(jugador.id)) {
+              console.warn(
+                "[usePartidaWS] PLAYER_LEFT para el jugador actual, ignorando en frontend"
               );
+              return;
             }
+
+            setJugadores((prev) =>
+              prev.filter((j) => Number(j.id) !== Number(leftId))
+            );
           }
         } catch (e) {
           console.error("WS message parse error", e);
@@ -175,7 +210,7 @@ export function usePartidaWS(partidaId, jugador) {
         }
 
         wsRef.current = null;
-        setJugadores([]); // limpiamos lista local
+        // OJO: no hacemos setJugadores([]) aquí para no "desaparecer" al usuario
       } catch (e) {
         console.error("Error en cleanup WS", e);
       }

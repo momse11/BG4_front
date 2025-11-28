@@ -55,22 +55,37 @@ export default function Lobby() {
 
   const openSelectClase = () => setShowClase(true)
 
-  const onClaseSelected = async (clase) => {
-    try {
-      await selectClase(id, clase)
-      setSelectedClaseLocal(clase)
-      setShowClase(false)
-      setShowPersonaje(true)
-    } catch (e) {
-      console.error('Error selecting clase', e)
-      alert(e?.response?.data?.error || 'Error seleccionando clase')
-    }
+  // Ahora solo guardamos la clase localmente; no llamamos a la API todavía
+  const onClaseSelected = (clase) => {
+    setSelectedClaseLocal(clase)
+    setShowClase(false)
+    setShowPersonaje(true)
   }
 
   const onPersonajeSelected = async (personajeId) => {
     try {
+      // Obtenemos la clase final: la local (si el usuario quiere cambiarla)
+      // o la que ya tiene en el servidor
+      const jugadorActual = user
+        ? jugadores.find((j) => Number(j.id) === Number(user.id))
+        : null
+
+      const claseFinal =
+        selectedClaseLocal || jugadorActual?.selected_clase
+
+      // Si tenemos clase, la persistimos primero (si tu backend lo requiere)
+      if (claseFinal) {
+        await selectClase(id, claseFinal)
+      }
+
+      // Luego persistimos el personaje
       await selectPersonaje(id, personajeId)
+
+      // Cerramos modal y limpiamos la clase temporal
       setShowPersonaje(false)
+      setSelectedClaseLocal(null)
+
+      // Mantienes el reload para forzar sync completa (si tu WS ya cubre esto, lo puedes quitar)
       setTimeout(() => {
         try {
           window.location.reload()
@@ -272,8 +287,12 @@ export default function Lobby() {
 
       {showClase && (
         <SelectClaseModal
-          onClose={() => setShowClase(false)}
           onSelect={onClaseSelected}
+          onClose={() => {
+            // Cierra el modal de clase y descarta la clase temporal
+            setShowClase(false)
+            setSelectedClaseLocal(null)
+          }}
         />
       )}
 
@@ -287,12 +306,13 @@ export default function Lobby() {
               )?.selected_clase)
           }
           onClose={() => {
+            // "Volver" / cerrar en el menú de personaje:
+            // cancelar el flujo y volver al estado anterior
             setShowPersonaje(false)
+            setSelectedClaseLocal(null)
           }}
-          onBackToClase={() => {
-            setShowPersonaje(false)
-            setShowClase(true)
-          }}
+          // No pasamos onBackToClase para que el botón "Volver" del modal
+          // solo cierre y no cambie nada en la selección real
           takenPersonajeIds={takenPersonajeIds}
           onSelect={onPersonajeSelected}
         />

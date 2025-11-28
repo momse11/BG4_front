@@ -1,7 +1,6 @@
 /* Tipografía retro debe estar ARRIBA DEL TODO */
 @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
 
-/* Reseteo */
 html, body, #root {
   margin: 0;
   padding: 0;
@@ -15,18 +14,16 @@ html, body, #root {
   box-sizing: border-box;
 }
 
-/* Fondo del body */
 body {
   background-color: #0A0F00 !important;
   margin: 0;
   padding: 0;
 }
 
-/* Clase retro 8 bits */
 .pixel-font {
   font-family: 'Press Start 2P', cursive !important;
   letter-spacing: 1px;
-  text-transform: none; /* asegura que no se alteren caracteres */
+  text-transform: none; 
   font-smooth: never;
   -webkit-font-smoothing: none;
   -moz-osx-font-smoothing: grayscale;

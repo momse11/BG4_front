@@ -27,6 +27,11 @@ const CLASES = [
   { name: 'Pícaro', img: Picaro }
 ]
 
+/**
+ * props:
+ * - onSelect(clase)
+ * - onClose() -> cerrar SOLO el modal (no salir del lobby/partida)
+ */
 export default function SelectClaseModal({ onClose, onSelect }) {
   const handleSelect = (clase) => {
     if (typeof onSelect === 'function') {
@@ -43,11 +48,11 @@ export default function SelectClaseModal({ onClose, onSelect }) {
   return (
     <div
       className="lobby-modal-overlay"
-      onClick={handleClose}
+      onClick={handleClose}                     // click fuera -> cerrar modal
     >
       <div
         className="lobby-modal class-modal"
-        onClick={(e) => e.stopPropagation()}
+        onClick={(e) => e.stopPropagation()}    // no cerrar al clickar dentro
       >
         <h2 className="class-modal-title">Selecciona una clase</h2>
 
@@ -70,7 +75,7 @@ export default function SelectClaseModal({ onClose, onSelect }) {
         <button
           type="button"
           className="pixel-button class-close-button"
-          onClick={handleClose}
+          onClick={handleClose}                 // botón Cerrar -> cerrar modal
         >
           Cerrar
         </button>

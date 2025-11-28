@@ -1,6 +1,15 @@
+// src/partida/SelectPersonajeModal.jsx
 import { useEffect, useState } from 'react'
 import { getPersonajesByClase as _getPersonajesByClase } from '../utils/api'
 
+/**
+ * props:
+ * - clase: string
+ * - onClose: function           -> cerrar este modal
+ * - onBackToClase: function     -> cerrar este modal y abrir el de clase
+ * - onSelect: function(personajeId | nombre)
+ * - takenPersonajeIds?: string[]
+ */
 export default function SelectPersonajeModal({
   clase,
   onClose,
@@ -11,10 +20,9 @@ export default function SelectPersonajeModal({
   const [personajes, setPersonajes] = useState([])
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState(null)
+
   const safeGetPersonajesByClase =
-    typeof _getPersonajesByClase === 'function'
-      ? _getPersonajesByClase
-      : async () => []
+    typeof _getPersonajesByClase === 'function' ? _getPersonajesByClase : async () => []
 
   useEffect(() => {
     let mounted = true
@@ -44,8 +52,6 @@ export default function SelectPersonajeModal({
             }
           })
           setPersonajes(uniq)
-          // ayuda a depurar qué estructura tiene `origen`
-          console.debug('personajes cargados:', uniq)
         }
       } catch (e) {
         console.error('Error fetching personajes', e)
@@ -64,7 +70,7 @@ export default function SelectPersonajeModal({
     if (typeof onClose === 'function') onClose()
   }
 
-  const handleBackToClase = () => {
+  const handleBackToClaseClick = () => {
     if (typeof onBackToClase === 'function') {
       onBackToClase()
     } else {
@@ -80,9 +86,7 @@ export default function SelectPersonajeModal({
 
   const handleSelect = (p) => {
     const key = String(p.id ?? p.nombre)
-    if (takenIds.includes(key)) {
-      return
-    }
+    if (takenIds.includes(key)) return
     if (typeof onSelect === 'function') {
       onSelect(p.id ?? p.nombre)
     }
@@ -109,6 +113,86 @@ export default function SelectPersonajeModal({
     }
   }
 
+  const getDamageIconSrc = (tipo) => {
+    if (!tipo) return ''
+    const safeName = String(tipo)
+      .trim()
+      .normalize('NFD')
+      .replace(/\p{Diacritic}/gu, '')
+
+    try {
+      const url = new URL(
+        `../assets/daño/${safeName}.png`,
+        import.meta.url
+      ).href
+      return url
+    } catch {
+      return ''
+    }
+  }
+
+  const renderDamageRow = (label, list) => {
+    if (!Array.isArray(list)) return null
+
+    const clean = list
+      .map((t) => String(t).trim())
+      .filter(Boolean)
+
+    if (clean.length === 0) return null
+
+    return (
+      <div className="character-tooltip-damage-row">
+        <span className="character-tooltip-damage-label">
+          {label}:
+        </span>
+        <div className="character-tooltip-damage-icons">
+          {clean.map((tipo) => (
+            <div
+              key={tipo}
+              className="damage-icon-wrap"
+              title={tipo}
+            >
+              <img src={getDamageIconSrc(tipo)} alt={tipo} />
+            </div>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  const renderStatsLine = (p) => {
+    const {
+      fuerza,
+      destreza,
+      constitucion,
+      inteligencia,
+      sabiduria,
+      carisma
+    } = p
+
+    if (
+      fuerza == null &&
+      destreza == null &&
+      constitucion == null &&
+      inteligencia == null &&
+      sabiduria == null &&
+      carisma == null
+    ) {
+      return null
+    }
+
+    return (
+      <div className="character-tooltip-stats">
+        <p>STR {fuerza ?? '-'}</p>
+        <p>DES {destreza ?? '-'}</p>
+        <p>CON {constitucion ?? '-'}</p>
+        <p>INT {inteligencia ?? '-'}</p>
+        <p>SAB {sabiduria ?? '-'}</p>
+        <p>CAR {carisma ?? '-'}</p>
+      </div>
+    )
+  }
+
   if (loadError) {
     return (
       <div className="lobby-modal-overlay" onClick={handleClose}>
@@ -123,7 +207,7 @@ export default function SelectPersonajeModal({
           <button
             type="button"
             className="pixel-button character-back-button"
-            onClick={handleBackToClase}
+            onClick={handleBackToClaseClick}
           >
             Volver
           </button>
@@ -169,24 +253,45 @@ export default function SelectPersonajeModal({
                   </div>
 
                   <div className="character-tooltip">
+                    <p><strong>Nombre:</strong> {p.nombre}</p>
+
                     <p>
-                      <strong>Nombre:</strong> {p.nombre}
+                      <strong>Raza:</strong>{' '}
+                      {p.raza || '-'}
+                      {p.subraza ? ` ${p.subraza}` : ''}
                     </p>
-                    {p.raza && (
-                      <p>
-                        <strong>Raza:</strong> {p.raza}
-                      </p>
-                    )}
-                    {p.clase && (
-                      <p>
-                        <strong>Clase:</strong> {p.clase}
-                      </p>
-                    )}
-                    {p.descripcion && (
-                      <p className="character-tooltip-desc">
-                        {p.descripcion}
-                      </p>
-                    )}
+
+                    <p>
+                      <strong>Subclase:</strong>{' '}
+                      {p.subclase || '-'}
+                    </p>
+
+                    <p>
+                      <strong>Velocidad:</strong>{' '}
+                      {p.velocidad ?? '-'}
+                    </p>
+
+                    <p>
+                      <strong>Origen:</strong>{' '}
+                      {p.origen || '-'}
+                    </p>
+
+                    <p>
+                      <strong>Alineamiento:</strong>{' '}
+                      {p.alineamiento || '-'}
+                    </p>
+
+                    <p className="character-tooltip-desc">
+                      {p.descripcion && p.descripcion.trim()
+                        ? p.descripcion
+                        : 'Sin descripción'}
+                    </p>
+
+                    {renderDamageRow('Debilidad', p.debilidad)}
+                    {renderDamageRow('Resistencia', p.resistencia)}
+                    {renderDamageRow('Inmunidad', p.inmunidad)}
+
+                    {renderStatsLine(p)}
                   </div>
                 </button>
               )
@@ -197,7 +302,7 @@ export default function SelectPersonajeModal({
         <button
           type="button"
           className="pixel-button character-back-button"
-          onClick={handleBackToClase}
+          onClick={handleBackToClaseClick}
         >
           Volver
         </button>
