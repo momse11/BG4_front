@@ -152,7 +152,7 @@ html, body, #root {
   z-index: 1000;
   padding: 12px;          
   box-sizing: border-box;
-  overflow-y: auto;       
+  overflow-y: visible;     /* 🔹 por defecto, sin scroll interno */
 }
 
 .lobby-modal {
@@ -167,8 +167,9 @@ html, body, #root {
   width: 100%;
   text-align: center;
   font-family: 'Press Start 2P', system-ui, sans-serif;
-  max-height: 90vh;    
-  overflow-y: auto;       
+  /* 🔹 en pantallas normales: sin límite de alto ni scroll interno */
+  max-height: none;
+  overflow-y: visible;
 }
 
 /* ---------- SELECCIÓN DE CLASE ---------- */
@@ -269,8 +270,9 @@ html, body, #root {
   font-family: 'Press Start 2P', system-ui, sans-serif;
   position: relative;
   overflow: visible;
-  max-height: 90vh;   
-  overflow-y: auto;   
+  /* 🔹 por defecto, sin límite de alto ni scroll interno */
+  max-height: none;
+  overflow-y: visible;
 }
 
 .character-modal-title {
@@ -455,5 +457,17 @@ html, body, #root {
     left: 50%;
     top: 100%;
     transform: translate(-50%, 8px);
+  }
+}
+
+@media (max-height: 700px) {
+  .lobby-modal-overlay {
+    overflow-y: auto;
+  }
+
+  .lobby-modal,
+  .character-modal {
+    max-height: 90vh;
+    overflow-y: auto;
   }
 }
