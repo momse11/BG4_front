@@ -3,6 +3,7 @@ import { useEffect, useState, useRef } from "react";
 
 export function usePartidaWS(partidaId, jugador) {
   const [jugadores, setJugadores] = useState([]);
+  const [turnoActivo, setTurnoActivo] = useState({ personajeId: null, movimientos_restantes: 0 });
   const wsRef = useRef(null);
 
   useEffect(() => {
@@ -95,6 +96,19 @@ export function usePartidaWS(partidaId, jugador) {
             setJugadores(unique);
           }
 
+          if (data.type === 'JUGADA_MOVIDA') {
+            try {
+              // emitir evento con payload para que hooks locales lo manejen sin recargar
+              window.dispatchEvent(new CustomEvent('jugada_moved', { detail: data }));
+            } catch (e) { /* noop */ }
+          }
+
+          if (data.type === 'PARTIDA_TURNO_ACTIVO') {
+            try {
+              setTurnoActivo({ personajeId: data.personajeId, movimientos_restantes: data.movimientos_restantes || 0 });
+            } catch (e) { /* noop */ }
+          }
+
           // opcional: si tu backend manda eventos de “salió un jugador”
           if (data.type === "PLAYER_LEFT") {
             const leftId = data.jugadorId || data.jugador_id;
@@ -185,5 +199,5 @@ export function usePartidaWS(partidaId, jugador) {
     return cleanup;
   }, [partidaId, jugador?.id]);
 
-  return { jugadores };
+  return { jugadores, turnoActivo };
 }

@@ -69,6 +69,8 @@ export default function Lobby() {
 
   const onPersonajeSelected = async (personajeId) => {
     try {
+      // Opción B: no crear Personaje al seleccionar; enviamos el valor tal cual
+      // (puede ser nombre o id). El servidor creará los Personajes al iniciar la partida.
       await selectPersonaje(id, personajeId)
       setShowPersonaje(false)
       setTimeout(() => {

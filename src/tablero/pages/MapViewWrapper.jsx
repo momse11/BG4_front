@@ -24,5 +24,5 @@ export default function MapViewWrapper() {
   if (!personajesIds)
     return <div style={{ color: "white" }}>Cargando personajes...</div>;
 
-  return <MapView mapaId={mapaId} personajesIds={personajesIds} />;
+  return <MapView partidaId={partidaId} mapaId={mapaId} personajesIds={personajesIds} />;
 }

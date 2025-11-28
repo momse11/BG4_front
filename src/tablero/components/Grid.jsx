@@ -3,7 +3,7 @@ import cofreIcon from "../../assets/tablero/Cofre.png";
 import fogataIcon from "../../assets/tablero/Fogata.png";
 import cartelIcon from "../../assets/tablero/Cartel.png";
 
-export default function Grid({ casillas, pos, onTileClick, partySprites }) {
+export default function Grid({ casillas, pos, onTileClick, partySprites, partySpritesMap }) {
   const TILE = 68;
   const GAP = 1;
 
@@ -59,10 +59,12 @@ export default function Grid({ casillas, pos, onTileClick, partySprites }) {
               imageRendering: "pixelated",
             }}
           >
-            {/* SPRITES EN LA CASILLA ACTUAL */}
-            {pos.x === c.x && pos.y === c.y && (
-              <PartySprites sprites={partySprites} />
-            )}
+            {/* SPRITES EN LA CASILLA: soporte para mapa de sprites por tile o grupo en `pos` */}
+            {(() => {
+              const key = `${c.x},${c.y}`;
+              const spritesForTile = partySpritesMap && partySpritesMap[key] ? partySpritesMap[key] : (pos.x === c.x && pos.y === c.y ? partySprites : null);
+              return spritesForTile && spritesForTile.length ? <PartySprites sprites={spritesForTile} /> : null;
+            })()}
 
             {/* ÍCONOS DE COFRE / FOGATA / CARTEL (tamaño original) */}
             {icon && (
