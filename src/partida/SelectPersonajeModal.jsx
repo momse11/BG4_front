@@ -78,14 +78,22 @@ export default function SelectPersonajeModal({
     }
   }
 
-  const personajesToShow = (personajes || []).slice(0, 3)
-
+  // 🔹 Normalizamos ids de personajes ya tomados
   const takenIds = Array.isArray(takenPersonajeIds)
     ? takenPersonajeIds.map((v) => String(v))
     : []
 
+  // 🔹 Solo mostramos personajes que NO están tomados, máximo 3
+  const personajesToShow = (personajes || [])
+    .filter((p) => {
+      const key = String(p?.id ?? p?.nombre)
+      return !takenIds.includes(key)
+    })
+    .slice(0, 3)
+
   const handleSelect = (p) => {
     const key = String(p.id ?? p.nombre)
+    // defensa extra por si acaso
     if (takenIds.includes(key)) return
     if (typeof onSelect === 'function') {
       onSelect(p.id ?? p.nombre)
@@ -228,74 +236,66 @@ export default function SelectPersonajeModal({
           <p className="character-modal-loading">Cargando...</p>
         ) : personajesToShow.length === 0 ? (
           <p className="character-modal-loading">
-            No hay personajes para esta clase
+            No hay personajes disponibles para esta clase
           </p>
         ) : (
           <div className="character-row">
-            {personajesToShow.map((p, index) => {
-              const key = String(p.id ?? p.nombre)
-              const isTaken = takenIds.includes(key)
+            {personajesToShow.map((p, index) => (
+              <button
+                key={p.id ?? p.nombre ?? index}
+                type="button"
+                className={
+                  'character-card character-card-' + index
+                }
+                onClick={() => handleSelect(p)}
+              >
+                <div className="character-image-wrap">
+                  <img src={getPortraitSrc(p)} alt={p.nombre} />
+                </div>
 
-              return (
-                <button
-                  key={p.id ?? p.nombre ?? index}
-                  type="button"
-                  className={
-                    'character-card character-card-' +
-                    index +
-                    (isTaken ? ' character-card-taken' : '')
-                  }
-                  onClick={() => handleSelect(p)}
-                  disabled={isTaken}
-                >
-                  <div className="character-image-wrap">
-                    <img src={getPortraitSrc(p)} alt={p.nombre} />
-                  </div>
+                <div className="character-tooltip">
+                  <p><strong>Nombre:</strong> {p.nombre}</p>
 
-                  <div className="character-tooltip">
-                    <p><strong>Nombre:</strong> {p.nombre}</p>
+                  <p>
+                    <strong>Raza:</strong>{' '}
+                    {p.raza || '-'}
+                    {p.subraza ? ` ${p.subraza}` : ''}
+                  </p>
 
-                    <p>
-                      <strong>Raza:</strong>{' '}
-                      {p.raza || '-'}
-                      {p.subraza ? ` ${p.subraza}` : ''}
-                    </p>
+                  <p>
+                    <strong>Subclase:</strong>{' '}
+                    {p.subclase || '-'}
+                  </p>
 
-                    <p>
-                      <strong>Subclase:</strong>{' '}
-                      {p.subclase || '-'}
-                    </p>
+                  <p>
+                    <strong>Velocidad:</strong>{' '}
+                    {p.velocidad ?? '-'}
+                  </p>
 
-                    <p>
-                      <strong>Velocidad:</strong>{' '}
-                      {p.velocidad ?? '-'}
-                    </p>
+                  <p>
+                    <strong>Origen:</strong>{' '}
+                    {p.origen || '-'}
+                  </p>
 
-                    <p>
-                      <strong>Origen:</strong>{' '}
-                      {p.origen || '-'}
-                    </p>
+                  <p>
+                    <strong>Alineamiento:</strong>{' '}
+                    {p.alineamiento || '-'}
+                  </p>
 
-                    <p>
-                      <strong>Alineamiento:</strong>{' '}
-                      {p.alineamiento || '-'}
-                    </p>
+                  <p className="character-tooltip-desc">
+                    {p.descripcion && p.descripcion.trim()
+                      ? p.descripcion
+                      : 'Sin descripción'}
+                  </p>
 
-                    <p className="character-tooltip-desc">
-                      {p.descripcion && p.descripcion.trim()
-                        ? p.descripcion
-                        : 'Sin descripción'}
-                    </p>
+                  {renderDamageRow('Debilidad', p.debilidad)}
+                  {renderDamageRow('Resistencia', p.resistencia)}
+                  {renderDamageRow('Inmunidad', p.inmunidad)}
 
-                    {renderDamageRow('Debilidad', p.debilidad)}
-                    {renderDamageRow('Resistencia', p.resistencia)}
-                    {renderDamageRow('Inmunidad', p.inmunidad)}
-
-                    {renderStatsLine(p)}
-                  </div>
-                </button>
-              )
-            })}
+                  {renderStatsLine(p)}
+                </div>
+              </button>
+            ))}
           </div>
         )}
 
