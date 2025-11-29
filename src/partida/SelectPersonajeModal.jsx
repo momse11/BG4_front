@@ -1,14 +1,14 @@
-// src/components/SelectPersonajeModal.jsx
+// src/partida/SelectPersonajeModal.jsx
 import { useEffect, useState } from 'react'
 import { getPersonajesByClase as _getPersonajesByClase } from '../utils/api'
 
 /**
  * props:
  * - clase: string
- * - onClose: function -> cerrar completamente el modal de personaje
- * - onBackToClase: function -> volver al modal de clases
+ * - onClose: function           -> cerrar este modal
+ * - onBackToClase: function     -> cerrar este modal y abrir el de clase
  * - onSelect: function(personajeId | nombre)
- * - takenPersonajeIds?: array
+ * - takenPersonajeIds?: string[]
  */
 export default function SelectPersonajeModal({
   clase,
@@ -22,9 +22,7 @@ export default function SelectPersonajeModal({
   const [loadError, setLoadError] = useState(null)
 
   const safeGetPersonajesByClase =
-    typeof _getPersonajesByClase === 'function'
-      ? _getPersonajesByClase
-      : async () => []
+    typeof _getPersonajesByClase === 'function' ? _getPersonajesByClase : async () => []
 
   useEffect(() => {
     let mounted = true
@@ -72,7 +70,7 @@ export default function SelectPersonajeModal({
     if (typeof onClose === 'function') onClose()
   }
 
-  const handleBackToClase = () => {
+  const handleBackToClaseClick = () => {
     if (typeof onBackToClase === 'function') {
       onBackToClase()
     } else {
@@ -80,17 +78,23 @@ export default function SelectPersonajeModal({
     }
   }
 
-  const personajesToShow = (personajes || []).slice(0, 3)
-
+  // 🔹 Normalizamos ids de personajes ya tomados
   const takenIds = Array.isArray(takenPersonajeIds)
     ? takenPersonajeIds.map((v) => String(v))
     : []
 
+  // 🔹 Solo mostramos personajes que NO están tomados, máximo 3
+  const personajesToShow = (personajes || [])
+    .filter((p) => {
+      const key = String(p?.id ?? p?.nombre)
+      return !takenIds.includes(key)
+    })
+    .slice(0, 3)
+
   const handleSelect = (p) => {
     const key = String(p.id ?? p.nombre)
-    if (takenIds.includes(key)) {
-      return
-    }
+    // defensa extra por si acaso
+    if (takenIds.includes(key)) return
     if (typeof onSelect === 'function') {
       onSelect(p.id ?? p.nombre)
     }
@@ -117,6 +121,86 @@ export default function SelectPersonajeModal({
     }
   }
 
+  const getDamageIconSrc = (tipo) => {
+    if (!tipo) return ''
+    const safeName = String(tipo)
+      .trim()
+      .normalize('NFD')
+      .replace(/\p{Diacritic}/gu, '')
+
+    try {
+      const url = new URL(
+        `../assets/daño/${safeName}.png`,
+        import.meta.url
+      ).href
+      return url
+    } catch {
+      return ''
+    }
+  }
+
+  const renderDamageRow = (label, list) => {
+    if (!Array.isArray(list)) return null
+
+    const clean = list
+      .map((t) => String(t).trim())
+      .filter(Boolean)
+
+    if (clean.length === 0) return null
+
+    return (
+      <div className="character-tooltip-damage-row">
+        <span className="character-tooltip-damage-label">
+          {label}:
+        </span>
+        <div className="character-tooltip-damage-icons">
+          {clean.map((tipo) => (
+            <div
+              key={tipo}
+              className="damage-icon-wrap"
+              title={tipo}
+            >
+              <img src={getDamageIconSrc(tipo)} alt={tipo} />
+            </div>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  const renderStatsLine = (p) => {
+    const {
+      fuerza,
+      destreza,
+      constitucion,
+      inteligencia,
+      sabiduria,
+      carisma
+    } = p
+
+    if (
+      fuerza == null &&
+      destreza == null &&
+      constitucion == null &&
+      inteligencia == null &&
+      sabiduria == null &&
+      carisma == null
+    ) {
+      return null
+    }
+
+    return (
+      <div className="character-tooltip-stats">
+        <p>STR {fuerza ?? '-'}</p>
+        <p>DES {destreza ?? '-'}</p>
+        <p>CON {constitucion ?? '-'}</p>
+        <p>INT {inteligencia ?? '-'}</p>
+        <p>SAB {sabiduria ?? '-'}</p>
+        <p>CAR {carisma ?? '-'}</p>
+      </div>
+    )
+  }
+
   if (loadError) {
     return (
       <div className="lobby-modal-overlay" onClick={handleClose}>
@@ -131,7 +215,7 @@ export default function SelectPersonajeModal({
           <button
             type="button"
             className="pixel-button character-back-button"
-            onClick={handleBackToClase}
+            onClick={handleBackToClaseClick}
           >
             Volver
           </button>
@@ -152,60 +236,73 @@ export default function SelectPersonajeModal({
           <p className="character-modal-loading">Cargando...</p>
         ) : personajesToShow.length === 0 ? (
           <p className="character-modal-loading">
-            No hay personajes para esta clase
+            No hay personajes disponibles para esta clase
           </p>
         ) : (
           <div className="character-row">
-            {personajesToShow.map((p, index) => {
-              const key = String(p.id ?? p.nombre)
-              const isTaken = takenIds.includes(key)
+            {personajesToShow.map((p, index) => (
+              <button
+                key={p.id ?? p.nombre ?? index}
+                type="button"
+                className={
+                  'character-card character-card-' + index
+                }
+                onClick={() => handleSelect(p)}
+              >
+                <div className="character-image-wrap">
+                  <img src={getPortraitSrc(p)} alt={p.nombre} />
+                </div>
 
-              return (
-                <button
-                  key={p.id ?? p.nombre ?? index}
-                  type="button"
-                  className={
-                    'character-card character-card-' +
-                    index +
-                    (isTaken ? ' character-card-taken' : '')
-                  }
-                  onClick={() => handleSelect(p)}
-                  disabled={isTaken}
-                >
-                  <div className="character-image-wrap">
-                    <img src={getPortraitSrc(p)} alt={p.nombre} />
-                  </div>
+                <div className="character-tooltip">
+                  <p><strong>Nombre:</strong> {p.nombre}</p>
 
-                  <div className="character-tooltip">
-                    <p>
-                      <strong>Nombre:</strong> {p.nombre}
-                    </p>
-                    {p.raza && (
-                      <p>
-                        <strong>Raza:</strong> {p.raza}
-                      </p>
-                    )}
-                    {p.clase && (
-                      <p>
-                        <strong>Clase:</strong> {p.clase}
-                      </p>
-                    )}
-                    {p.descripcion && (
-                      <p className="character-tooltip-desc">
-                        {p.descripcion}
-                      </p>
-                    )}
-                  </div>
-                </button>
-              )
-            })}
+                  <p>
+                    <strong>Raza:</strong>{' '}
+                    {p.raza || '-'}
+                    {p.subraza ? ` ${p.subraza}` : ''}
+                  </p>
+
+                  <p>
+                    <strong>Subclase:</strong>{' '}
+                    {p.subclase || '-'}
+                  </p>
+
+                  <p>
+                    <strong>Velocidad:</strong>{' '}
+                    {p.velocidad ?? '-'}
+                  </p>
+
+                  <p>
+                    <strong>Origen:</strong>{' '}
+                    {p.origen || '-'}
+                  </p>
+
+                  <p>
+                    <strong>Alineamiento:</strong>{' '}
+                    {p.alineamiento || '-'}
+                  </p>
+
+                  <p className="character-tooltip-desc">
+                    {p.descripcion && p.descripcion.trim()
+                      ? p.descripcion
+                      : 'Sin descripción'}
+                  </p>
+
+                  {renderDamageRow('Debilidad', p.debilidad)}
+                  {renderDamageRow('Resistencia', p.resistencia)}
+                  {renderDamageRow('Inmunidad', p.inmunidad)}
+
+                  {renderStatsLine(p)}
+                </div>
+              </button>
+            ))}
           </div>
         )}
 
         <button
           type="button"
           className="pixel-button character-back-button"
-          onClick={handleBackToClase}
+          onClick={handleBackToClaseClick}
         >
           Volver
         </button>

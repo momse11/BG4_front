@@ -1,22 +1,39 @@
-
 @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
 
-/* Fondo y centrado general */
+html, body, #root {
+  margin: 0;
+  padding: 0;
+  height: auto;
+  min-height: 100vh;
+  overflow-y: auto;
+  box-sizing: border-box;
+  display: block;
+}
+
 .landing-pixel-root {
   font-family: 'Press Start 2P', system-ui, sans-serif;
   background-color: #0A0F00;
   color: #F8E9D0;
-  height: 100vh;
+  min-height: 100vh;    
   width: 100vw;
-  overflow: hidden;
+  overflow-y: auto;       
+  overflow-x: hidden;
   display: flex;
   align-items: center;
   justify-content: center;
+  padding: 24px 16px;      
+  box-sizing: border-box;
 }
 
-/* Contenedor sin borde, mismo color que el fondo */
+@media (max-height: 600px) {
+  .landing-pixel-root {
+    align-items: flex-start;
+    padding-top: 24px;
+  }
+}
+
 .auth-card {
-  background-color: #0A0F00;   /* igual que el fondo */
+  background-color: #0A0F00; 
   color: #F8E9D0;
   border: none;
   box-shadow: none;
@@ -24,23 +41,21 @@
   max-width: 420px;
   width: 90%;
   text-align: center;
+  box-sizing: border-box;
 }
 
-/* Título */
 .auth-title {
   margin: 0 0 1.2rem;
   font-size: 0.9rem;
   color: #C0A66C;
 }
 
-/* Formulario en columna */
 .auth-form {
   display: flex;
   flex-direction: column;
   gap: 12px;
 }
 
-/* Inputs verdes con tipografía pixelada */
 .auth-input {
   background-color: #4A6931;
   color: #F8E9D0;
@@ -49,7 +64,8 @@
   font-family: 'Press Start 2P', system-ui, sans-serif;
   font-size: 0.7rem;
   outline: none;
-  box-shadow: 0 3px 0 #000000;
+  box-shadow: 0 3px 0 #0A0F00;
+  box-sizing: border-box;
 }
 
 .auth-input::placeholder {
@@ -61,7 +77,6 @@
   box-shadow: 0 0 0 2px #F8E9D0;
 }
 
-/* Botón pixel amarillo */
 .pixel-button {
   width: 100%;
   padding: 0.8rem 1rem;
@@ -71,9 +86,10 @@
   font-size: 0.7rem;
   cursor: pointer;
   image-rendering: pixelated;
-  box-shadow: 0 4px 0 #000000;
+  box-shadow: 0 4px 0 #0A0F00;
   outline: none;
   font-family: 'Press Start 2P', system-ui, sans-serif;
+  box-sizing: border-box;
 }
 
 .auth-button-primary {
@@ -87,10 +103,9 @@
 
 .pixel-button:active {
   transform: translateY(2px);
-  box-shadow: 0 2px 0 #000000;
+  box-shadow: 0 2px 0 #0A0F00;
 }
 
-/* Stacks de botones / textos */
 .auth-buttons {
   margin-top: 1.5rem;
   display: flex;
@@ -130,7 +145,6 @@
   font-size: 0.7rem;
 }
 
-/* Responsive */
 @media (max-width: 480px) {
   .auth-card {
     padding: 20px 16px;

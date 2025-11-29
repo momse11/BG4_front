@@ -12,35 +12,19 @@ const spriteFiles = import.meta.glob(
 );
 
 function getPortrait(name) {
-  if (!name) return null;
-  const cleanName = String(name).toLowerCase().replace(/[_\s]+/g, '');
+  const clean = name.toLowerCase();
   for (const p in retratos) {
     const file = p.split("/").pop().split(".")[0].toLowerCase();
-    const fileClean = file.replace(/[_\s]+/g, '');
-    if (fileClean === cleanName) return retratos[p].default;
-  }
-  // fallback: contains / startsWith
-  for (const p in retratos) {
-    const file = p.split("/").pop().split(".")[0].toLowerCase();
-    const fileClean = file.replace(/[_\s]+/g, '');
-    if (fileClean.includes(cleanName) || cleanName.includes(fileClean)) return retratos[p].default;
+    if (file === clean) return retratos[p].default;
   }
   return null;
 }
 
 function getSprite(name) {
-  if (!name) return null;
-  const cleanName = String(name).toLowerCase().replace(/[_\s]+/g, '');
+  const clean = name.toLowerCase();
   for (const p in spriteFiles) {
     const file = p.split("/").pop().split(".")[0].toLowerCase();
-    const fileClean = file.replace(/[_\s]+/g, '');
-    if (fileClean === cleanName) return spriteFiles[p].default;
-  }
-  // fallback: partial match
-  for (const p in spriteFiles) {
-    const file = p.split("/").pop().split(".")[0].toLowerCase();
-    const fileClean = file.replace(/[_\s]+/g, '');
-    if (fileClean.includes(cleanName) || cleanName.includes(fileClean)) return spriteFiles[p].default;
+    if (file === clean) return spriteFiles[p].default;
   }
   return null;
 }
@@ -164,7 +148,6 @@ export function useMapLogic({ mapaId, personajesIds }) {
     window.addEventListener('jugada_moved', onJugadaMoved);
     return () => window.removeEventListener('jugada_moved', onJugadaMoved);
   }, [personajesIds]);
-
   return {
     loading,
     mapa,

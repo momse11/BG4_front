@@ -27,6 +27,11 @@ const CLASES = [
   { name: 'Pícaro', img: Picaro }
 ]
 
+/**
+ * props:
+ * - onSelect(clase)
+ * - onClose() -> cerrar SOLO el modal (no salir del lobby/partida)
+ */
 export default function SelectClaseModal({ onClose, onSelect }) {
   const handleSelect = (clase) => {
     if (typeof onSelect === 'function') {

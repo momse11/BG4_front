@@ -59,10 +59,12 @@ export default function Grid({ casillas, pos, onTileClick, partySprites, partySp
               imageRendering: "pixelated",
             }}
           >
-            {/* SPRITES EN LA CASILLA: soporte para mapa de sprites por tile o grupo en `pos` */}
+            {/* SPRITES: soporte para mapa de sprites por casilla (`partySpritesMap`) o fallback a `partySprites` en la posición `pos` */}
             {(() => {
               const key = `${c.x},${c.y}`;
-              const spritesForTile = partySpritesMap && partySpritesMap[key] ? partySpritesMap[key] : (pos.x === c.x && pos.y === c.y ? partySprites : null);
+              const spritesForTile = partySpritesMap && partySpritesMap[key]
+                ? partySpritesMap[key]
+                : (pos && pos.x === c.x && pos.y === c.y ? partySprites : null);
               return spritesForTile && spritesForTile.length ? <PartySprites sprites={spritesForTile} /> : null;
             })()}
 
