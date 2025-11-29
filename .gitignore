@@ -24,4 +24,5 @@ dist-ssr
 *.sw?
 
 TilinerOS-front
-*ZoneIdentifier*
+*.*:Zone.Identifier
+*Zone.Identifier
