@@ -168,6 +168,13 @@ export default function MapView({ partidaId, mapaId, personajesIds }) {
         return;
       }
 
+      // bloquear casillas según tipo (cofre / inaccesible)
+      try {
+        const tipo = String(casillaExists.tipo || '').toLowerCase();
+        if (tipo.includes('cofre')) { alert('No puedes moverte: la casilla es un Cofre'); return; }
+        if (tipo.includes('inaccesible')) { alert('No puedes moverte: la casilla es Inaccesible'); return; }
+      } catch (e) { /* noop */ }
+
       // enviar movimiento usando el id numérico resuelto
       await moveTo(mySelectedPersonajeNumericId, c.x, c.y);
       // opcional: podríamos solicitar al backend el siguiente turno o actualizar jugadas
@@ -200,6 +207,13 @@ export default function MapView({ partidaId, mapaId, personajesIds }) {
         alert('La casilla destino no pertenece a este mapa');
         return;
       }
+
+      // bloquear casillas según tipo (cofre / inaccesible)
+      try {
+        const tipo = String(casillaExists.tipo || '').toLowerCase();
+        if (tipo.includes('cofre')) { alert('Movimiento bloqueado: la casilla de destino es un Cofre'); return; }
+        if (tipo.includes('inacces')) { alert('Movimiento bloqueado: la casilla de destino es Inaccesible'); return; }
+      } catch (e) { /* noop */ }
 
       // realizar la llamada usando el id NUMÉRICO del personaje activo; el backend moverá a todos los participantes
       try {
