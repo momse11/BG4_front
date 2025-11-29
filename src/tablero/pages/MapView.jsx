@@ -178,50 +178,39 @@ export default function MapView({ partidaId, mapaId, personajesIds }) {
     }
   };
 
-  // mueve TODO el equipo una unidad en la dirección (dx,dy) por cada punto de movimiento
+  // mueve TODO el equipo UNA casilla en la dirección (dx,dy) por cada click
   const moveTeam = async (dx, dy) => {
     try {
+      // solo permitir mover si es mi turno activo
       if (!myTurnActive) { alert('No es tu turno'); return; }
-
-      // identificar mi actor en el orden y obtener velocidad (máx movimientos restantes)
-      const mySlot = sortedOrder.find((o) => String(o.actor.id) === String(mySelectedPersonajeNumericId));
-      const speed = Math.min(mySlot?.actor?.velocidad ?? mySlot?.actor?.vel_mov ?? 1, turnoActivo.movimientos_restantes || 0);
+      if ((turnoActivo.movimientos_restantes || 0) <= 0) { alert('No te quedan movimientos'); return; }
 
       // obtener posición actual del personaje activo
       const myJ = (jugadas || []).find(j => String(j.jugador_id) === String(mySelectedPersonajeNumericId));
       if (!myJ) { alert('No se conoce la posición de tu personaje'); return; }
-      let curX = Number(myJ.x);
-      let curY = Number(myJ.y);
+      const curX = Number(myJ.x);
+      const curY = Number(myJ.y);
+      const newX = curX + dx;
+      const newY = curY + dy;
 
-      for (let step = 0; step < speed; step++) {
-        const newX = curX + dx;
-        const newY = curY + dy;
-
-        // comprobar localmente la existencia de la casilla destino
-        const casillaExists = casillas.find(ca => Number(ca.x) === Number(newX) && Number(ca.y) === Number(newY));
-        if (!casillaExists) {
-          console.warn('[MapView] Movimiento bloqueado local: casilla destino no pertenece al mapa', { dest: { x: newX, y: newY }, mapaId: mapa?.id });
-          alert('La casilla destino no pertenece a este mapa');
-          return;
-        }
-
-        // realizar la llamada usando el id NUMÉRICO del personaje activo;
-        // el backend moverá a todos los participantes de la partida hacia la misma casilla
-        try {
-          await moveTo(mySelectedPersonajeNumericId, newX, newY);
-        } catch (e) {
-          console.error('Movimiento bloqueado para jugador', mySelectedPersonajeNumericId, e);
-          alert(e?.response?.data?.error || 'Movimiento bloqueado para el equipo');
-          return;
-        }
-
-        // si la llamada fue exitosa, actualizar coordenadas locales para el siguiente paso
-        curX = newX;
-        curY = newY;
-        // (la actualización de la UI vendrá por el evento WS JUGADA_MOVIDA; si quieres recargar, sigue usando window.location.reload())
+      // comprobar localmente la existencia de la casilla destino
+      const casillaExists = casillas.find(ca => Number(ca.x) === Number(newX) && Number(ca.y) === Number(newY));
+      if (!casillaExists) {
+        console.warn('[MapView] Movimiento bloqueado local: casilla destino no pertenece al mapa', { dest: { x: newX, y: newY }, mapaId: mapa?.id });
+        alert('La casilla destino no pertenece a este mapa');
+        return;
       }
-      // opcional: recargar o confiar en WS para refrescar
-      window.location.reload();
+
+      // realizar la llamada usando el id NUMÉRICO del personaje activo; el backend moverá a todos los participantes
+      try {
+        await moveTo(mySelectedPersonajeNumericId, newX, newY);
+      } catch (e) {
+        console.error('Movimiento bloqueado para jugador', mySelectedPersonajeNumericId, e);
+        alert(e?.response?.data?.error || 'Movimiento bloqueado para el equipo');
+        return;
+      }
+
+      // confiar en WS para actualizar UI
     } catch (e) {
       console.error('Error moviendo equipo', e);
       alert('Error moviendo el equipo');
