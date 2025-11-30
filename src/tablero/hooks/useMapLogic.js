@@ -29,7 +29,7 @@ function getSprite(name) {
   return null;
 }
 
-const d20 = () => Math.floor(Math.random() * 20) + 1;
+const d4 = () => Math.floor(Math.random() * 4) + 1;
 
 function findStart(casillas) {
   return casillas.find((c) => c.tipo === "Descanso") || casillas[0];
@@ -93,7 +93,7 @@ export function useMapLogic({ mapaId, personajesIds }) {
           });
           lista.sort((a, b) => a.turno - b.turno); // menor turno = juega antes
         } else {
-          lista = actores.map((pj) => ({ actor: pj, iniciativa: d20() + Number(pj.modIniciativa ?? 0) }));
+          lista = actores.map((pj) => ({ actor: pj, iniciativa: d4() + Number(pj.modIniciativa ?? 0) }));
           lista.sort((a, b) => b.iniciativa - a.iniciativa);
         }
 

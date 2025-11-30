@@ -9,7 +9,17 @@ export default function PartidaEmpezada() {
   const navigate = useNavigate()
   const { user } = useContext(AuthContext)
   const [partida, setPartida] = useState(null)
-  const { jugadores } = usePartidaWS(id, user ? { id: user.id, username: user.username } : null)
+
+  const { jugadores } = usePartidaWS(
+    id,
+    user ? { id: user.id, username: user.username } : null,
+    {
+      // Si el backend borra la partida, nos vamos al landing/listado
+      onPartidaDeleted: () => {
+        navigate('/partidas')
+      },
+    }
+  )
 
   useEffect(() => {
     let mounted = true
@@ -22,7 +32,9 @@ export default function PartidaEmpezada() {
         console.error('Error fetching partida', e)
       }
     })()
-    return () => { mounted = false }
+    return () => {
+      mounted = false
+    }
   }, [id])
 
   return (
@@ -34,14 +46,35 @@ export default function PartidaEmpezada() {
 
       <div style={{ marginBottom: 12 }}>
         <strong>Jugadores conectados:</strong>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 12, marginTop: 8 }}>
-          {jugadores && jugadores.length > 0 ? jugadores.map(j => (
-            <div key={j.id} style={{ border: '1px solid #ddd', padding: 12, borderRadius: 8 }}>
-              <div style={{ fontWeight: 600 }}>{j.username} (id: {j.id})</div>
-              <div>Clase: {j.selected_clase || '—'}</div>
-              <div>Personaje: {j.selected_personaje ? j.selected_personaje.nombre : (j.selected_personaje_id || '—')}</div>
-            </div>
-          )) : <div>No hay jugadores conectados</div>}
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
+            gap: 12,
+            marginTop: 8,
+          }}
+        >
+          {jugadores && jugadores.length > 0 ? (
+            jugadores.map((j) => (
+              <div
+                key={j.id}
+                style={{ border: '1px solid #ddd', padding: 12, borderRadius: 8 }}
+              >
+                <div style={{ fontWeight: 600 }}>
+                  {j.username} (id: {j.id})
+                </div>
+                <div>Clase: {j.selected_clase || '—'}</div>
+                <div>
+                  Personaje:{' '}
+                  {j.selected_personaje
+                    ? j.selected_personaje.nombre
+                    : j.selected_personaje_id || '—'}
+                </div>
+              </div>
+            ))
+          ) : (
+            <div>No hay jugadores conectados</div>
+          )}
         </div>
       </div>
 

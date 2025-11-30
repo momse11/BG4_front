@@ -1,9 +1,13 @@
-// src/utils/ws.js
 import { useEffect, useState, useRef } from "react";
 
-export function usePartidaWS(partidaId, jugador) {
+export function usePartidaWS(partidaId, jugador, options = {}) {
+  const { onPartidaDeleted, onPartidaStarted } = options;
+
   const [jugadores, setJugadores] = useState([]);
-  const [turnoActivo, setTurnoActivo] = useState({ personajeId: null, movimientos_restantes: 0 });
+  const [turnoActivo, setTurnoActivo] = useState({
+    personajeId: null,
+    movimientos_restantes: 0,
+  });
   const wsRef = useRef(null);
 
   useEffect(() => {
@@ -57,22 +61,32 @@ export function usePartidaWS(partidaId, jugador) {
           const data = JSON.parse(msg.data);
           console.debug("[usePartidaWS] WS message", data);
 
+          // 🔴 Partida destruida desde el backend
           if (data && data.type === "PARTIDA_DELETED") {
             console.debug(
-              "[usePartidaWS] PARTIDA_DELETED received — redirecting to /landing"
+              "[usePartidaWS] PARTIDA_DELETED received"
             );
-            try {
-              window.location.replace("/landing");
-            } catch (e) {
-              /* noop */
+
+            if (onPartidaDeleted) {
+              onPartidaDeleted(data);
+            } else {
+              // fallback por si no se pasa callback
+              try {
+                window.location.replace("/landing");
+              } catch (e) {
+                /* noop */
+              }
             }
             return;
           }
 
+          // partida empezó (seguir usando callback opcional si quieres SPA)
           if (data?.type === "PARTIDA_STARTED") {
             try {
               const mapaId = data.mapaId || data.mapa_id || null;
-              if (mapaId) {
+              if (onPartidaStarted) {
+                onPartidaStarted({ partidaId, mapaId, raw: data });
+              } else if (mapaId) {
                 console.debug(
                   "[usePartidaWS] PARTIDA_STARTED received — redirecting to map",
                   partidaId,
@@ -85,7 +99,9 @@ export function usePartidaWS(partidaId, jugador) {
           }
 
           if (data.type === "UPDATE_PLAYERS") {
-            const arr = Array.isArray(data.jugadores) ? data.jugadores : [];
+            const arr = Array.isArray(data.jugadores)
+              ? data.jugadores
+              : [];
 
             // 1) normalizamos y quitamos duplicados por id
             const map = {};
@@ -123,17 +139,26 @@ export function usePartidaWS(partidaId, jugador) {
             setJugadores(unique);
           }
 
-          if (data.type === 'JUGADA_MOVIDA') {
+          if (data.type === "JUGADA_MOVIDA") {
             try {
               // emitir evento con payload para que hooks locales lo manejen sin recargar
-              window.dispatchEvent(new CustomEvent('jugada_moved', { detail: data }));
-            } catch (e) { /* noop */ }
+              window.dispatchEvent(
+                new CustomEvent("jugada_moved", { detail: data })
+              );
+            } catch (e) {
+              /* noop */
+            }
           }
 
-          if (data.type === 'PARTIDA_TURNO_ACTIVO') {
+          if (data.type === "PARTIDA_TURNO_ACTIVO") {
             try {
-              setTurnoActivo({ personajeId: data.personajeId || data.personaje_id || null, movimientos_restantes: data.movimientos_restantes || 0 });
-            } catch (e) { /* noop */ }
+              setTurnoActivo({
+                personajeId: data.personajeId || data.personaje_id || null,
+                movimientos_restantes: data.movimientos_restantes || 0,
+              });
+            } catch (e) {
+              /* noop */
+            }
           }
 
           // opcional: si tu backend manda eventos de “salió un jugador”
@@ -175,7 +200,10 @@ export function usePartidaWS(partidaId, jugador) {
             connect();
           }, delay);
         } else {
-          console.warn("Max WS reconnect attempts reached for partida", partidaId);
+          console.warn(
+            "Max WS reconnect attempts reached for partida",
+            partidaId
+          );
         }
       };
 
@@ -225,7 +253,7 @@ export function usePartidaWS(partidaId, jugador) {
         }
 
         wsRef.current = null;
-        // OJO: no hacemos setJugadores([]) aquí para no "desaparecer" al usuario
+        // no hacemos setJugadores([]) aquí para no "parpadear" la UI
       } catch (e) {
         console.error("Error en cleanup WS", e);
       }
@@ -233,7 +261,7 @@ export function usePartidaWS(partidaId, jugador) {
 
     // cleanup al cambiar partida o desmontar
     return cleanup;
-  }, [partidaId, jugador?.id]);
+  }, [partidaId, jugador?.id, jugador?.username, onPartidaDeleted, onPartidaStarted]);
 
   return { jugadores, turnoActivo };
 }

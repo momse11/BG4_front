@@ -1,10 +1,8 @@
-//CONEXION CON API (con axios o axiom como se llame)
-
-//estructura tentativa
+// CONEXION CON API (con axios o axiom como se llame)
 
 import axios from 'axios'
 
-const API_BASE_URL = 'http://localhost:3000/api/v1'
+export const API_BASE_URL = 'http://localhost:3000/api/v1'
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -78,6 +76,18 @@ export const selectPersonaje = async (partidaId, personajeId) => {
   return r.data
 }
 
+// salir de una partida
+export const leavePartida = async (partidaId) => {
+  const r = await api.post(`/partidas/${partidaId}/leave`)
+  return r.data
+}
+
+// 👇 NUEVO: eliminar explícitamente una partida (DELETE /partidas/{id})
+export const deletePartida = async (id) => {
+  await api.delete(`/partidas/${id}`)
+  // backend responde 204 sin body
+}
+
 // Personaje catalog
 export const getClases = async () => {
   const r = await api.get('/personaje/clases')
@@ -89,10 +99,6 @@ export const getPersonajesByClase = async (clase) => {
   return r.data.personajes || []
 }
 
-// backward-compatible aliases (mantener nombres anteriores por compatibilidad con componentes existentes)
-// (no aliases for razas — trabajamos por 'clase')
-
-//WEBSOCKETS (DESPUES)
-
+// WEBSOCKETS (DESPUES)
 
 export default api

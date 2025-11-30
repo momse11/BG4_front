@@ -1,0 +1,148 @@
+@import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+
+/* Estados de carga / error del mapa */
+.map-status-text {
+  color: #C0A66C;
+  font-family: 'Press Start 2P', system-ui, sans-serif;
+  background-color: #0A0F00;
+  min-height: 100vh;
+  width: 100vw;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+/* Contenedor raíz del mapa */
+.map-root {
+  width: 100vw;
+  height: 100vh;
+  background: #0A0F00;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  overflow: hidden;
+  font-family: 'Press Start 2P', system-ui, sans-serif;
+  color: #FFFFFF;
+}
+
+/* Fila superior de retratos / jugadores */
+.map-header {
+  display: flex;
+  gap: 20px;
+  margin-top: 20px;
+  justify-content: center;
+  align-items: center;
+}
+
+/* Cada “slot” de jugador arriba */
+.map-slot {
+  position: relative;
+  display: inline-block;
+  text-align: center;
+  min-width: 92px;
+}
+
+/* Nombre de usuario encima del retrato */
+.map-slot-username {
+  margin-bottom: 6px;
+  font-size: 10px;
+  color: #C0A66C;
+  text-shadow: 0 0 4px #0A0F00;
+}
+
+.map-slot-username--active {
+  color: #4A6931; /* verde cuando es su turno */
+}
+
+/* Wrapper del marco + retrato */
+.map-slot-frame-wrapper {
+  position: relative;
+  display: inline-block;
+}
+
+/* Retrato del personaje (detrás del marco) */
+.map-slot-portrait {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 1;
+  image-rendering: pixelated;
+  pointer-events: none;
+}
+
+/* Marco en tamaño original */
+.map-slot-frame {
+  position: relative;
+  z-index: 2;
+  display: block;
+  image-rendering: pixelated;
+  pointer-events: none;
+}
+
+/* Contenedor principal del mapa + grid */
+.map-main {
+  width: 100%;
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  position: relative;
+}
+
+/* Fondo del mapa */
+.map-background {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  image-rendering: pixelated;
+}
+
+/* Banner de texto de turno sobre el mapa */
+.map-turn-banner {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #0A0F00;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 10px;
+  text-align: center;
+}
+
+/* Nombre del mapa (abajo) */
+.map-name {
+  margin-bottom: 10px;
+  font-size: 18px;
+  color: #F8E9D0;
+}
+
+.map-abandon-button {
+  font-family: 'Press Start 2P', system-ui, sans-serif;
+  /* 🔽 cambio clave: ancho automático, no full width */
+  width: auto;
+  padding: 0.9rem 1rem;
+  background-color: #4A6931;   
+  color: #0A0F00;            
+  border: 3px solid #C0A66C;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  font-size: 0.7rem;
+  cursor: pointer;
+  image-rendering: pixelated;
+  box-shadow: 0 4px 0 #0A0F00;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.map-abandon-button:hover {
+  background-color: #C0A66C;
+}
+
+.map-abandon-button:active {
+  transform: translateY(2px);
+  box-shadow: 0 2px 0 #0A0F00;
+}

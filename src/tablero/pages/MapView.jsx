@@ -4,7 +4,11 @@ import { useMapLogic } from "../hooks/useMapLogic";
 import { useContext, useMemo } from "react";
 import { AuthContext } from "../../auth/AuthProvider";
 import { usePartidaWS } from "../../utils/ws";
-import MovementControls from "../components/MovementControls";
+import { deletePartida } from "../../utils/api";
+import { useNavigate } from "react-router-dom";
+
+// 👇 importa los estilos del mapa
+import "../../assets/styles/map.css";
 
 const fondos = import.meta.glob("/src/assets/tablero/mapas/*", { eager: true });
 
@@ -23,348 +27,412 @@ function getFondo(name) {
 
 export default function MapView({ partidaId, mapaId, personajesIds }) {
   const { user } = useContext(AuthContext);
-  const jugadorParam = useMemo(() => (user ? { id: user.id, username: user.username } : null), [user?.id, user?.username]);
+  const navigate = useNavigate();
+
+  const jugadorParam = useMemo(
+    () => (user ? { id: user.id, username: user.username } : null),
+    [user?.id, user?.username]
+  );
   const { jugadores, turnoActivo } = usePartidaWS(partidaId, jugadorParam);
 
   const { loading, mapa, casillas, pos, order, jugadas, moveTo } =
     useMapLogic({ mapaId, personajesIds });
 
-  if (loading) return <div style={{ color: "#fff" }}>Cargando...</div>;
-  if (!mapa) return <div style={{ color: "#fff" }}>Error cargando mapa</div>;
+  if (loading) return <div className="map-status-text">Cargando...</div>;
+  if (!mapa) return <div className="map-status-text">Error cargando mapa</div>;
 
   const fondoMapa = getFondo(mapa.nombre);
+  const activePersonajeIdStr =
+    turnoActivo?.personajeId != null ? String(turnoActivo.personajeId) : null;
 
   // ✔ Orden basado en turno (menor turno juega primero)
-  const sortedOrder = [...order].sort((a, b) => (a.turno ?? 0) - (b.turno ?? 0));
+  const sortedOrder = [...order].sort(
+    (a, b) => (a.turno ?? 0) - (b.turno ?? 0)
+  );
 
-  // Sprites del party (orden por turno)
-  const partySprites = sortedOrder.map((o) => o.actor.sprite).filter(Boolean);
+  // Sprites del party (orden por turno), poniendo el personaje activo al frente
+  const spritesOtros = [];
+  const spritesActivos = [];
+  for (const o of sortedOrder) {
+    const spr = o.actor.sprite;
+    if (!spr) continue;
+    if (activePersonajeIdStr && String(o.actor.id) === activePersonajeIdStr) {
+      spritesActivos.push(spr);
+    } else {
+      spritesOtros.push(spr);
+    }
+  }
+  const partySprites = [...spritesOtros, ...spritesActivos];
 
   // construir mapa de sprites por casilla a partir de `jugadas`
   const spriteById = new Map();
-  // build a quick lookup of jugadores (from WS) by personaje nombre or id
   const jugadoresByNombre = {};
+  const jugadorByPersonajeId = {};
+
   for (const j of jugadores || []) {
     try {
       const sel = j.selected_personaje || null;
-      if (sel && sel.nombre) jugadoresByNombre[String(sel.nombre).toLowerCase()] = sel;
+      if (sel && sel.nombre) {
+        jugadoresByNombre[String(sel.nombre).toLowerCase()] = sel;
+      }
+      const pjId =
+        (sel && sel.id) || j.selected_personaje_id || j.selected_personaje_db_id;
+      if (pjId != null) {
+        jugadorByPersonajeId[String(pjId)] = j;
+      }
     } catch (e) {}
   }
 
   for (const o of sortedOrder) {
     if (!o || !o.actor || o.actor.id == null) continue;
     let spr = o.actor.sprite || null;
-    // fallback: buscar en la lista de jugadores (WS) por nombre
     if (!spr && o.actor.nombre) {
       const found = jugadoresByNombre[String(o.actor.nombre).toLowerCase()];
       if (found && found.sprite) spr = found.sprite;
     }
-    // DEBUG
-    try { console.debug('[MapView] asignando sprite para actor', o.actor.nombre, '->', spr); } catch (e) {}
+    try {
+      console.debug(
+        "[MapView] asignando sprite para actor",
+        o.actor.nombre,
+        "->",
+        spr
+      );
+    } catch (e) {}
     if (spr) spriteById.set(String(o.actor.id), spr);
   }
 
   const partySpritesMap = {};
+  const tempSpritesMap = {};
+
   for (const j of jugadas || []) {
     try {
       const key = `${j.x},${j.y}`;
       const spr = spriteById.get(String(j.jugador_id)) || null;
       if (!spr) continue;
-      if (!partySpritesMap[key]) partySpritesMap[key] = [];
-      partySpritesMap[key].push(spr);
-    } catch (e) { /* noop */ }
+      if (!tempSpritesMap[key]) {
+        tempSpritesMap[key] = { normal: [], active: [] };
+      }
+      const isActiveHere =
+        activePersonajeIdStr &&
+        String(j.jugador_id) === String(activePersonajeIdStr);
+      if (isActiveHere) {
+        tempSpritesMap[key].active.push(spr);
+      } else {
+        tempSpritesMap[key].normal.push(spr);
+      }
+    } catch (e) {}
   }
 
-  // Fallback: si no hay jugadas (aún no creadas en el backend), usar los sprites declarados en WS `jugadores`
-  // y colocarlos en la casilla de inicio (tipo 'Descanso' o primera casilla)
-  if (Object.keys(partySpritesMap).length === 0 && Array.isArray(jugadores) && jugadores.length > 0) {
+  for (const key in tempSpritesMap) {
+    partySpritesMap[key] = [
+      ...tempSpritesMap[key].normal,
+      ...tempSpritesMap[key].active,
+    ];
+  }
+
+  // Fallback: sin jugadas aún -> todos en la casilla de descanso / primera
+  if (
+    Object.keys(partySpritesMap).length === 0 &&
+    Array.isArray(jugadores) &&
+    jugadores.length > 0
+  ) {
     try {
-      const start = casillas.find((c) => String(c.tipo).toLowerCase() === 'descanso') || casillas[0];
+      const start =
+        casillas.find((c) => String(c.tipo).toLowerCase() === "descanso") ||
+        casillas[0];
       if (start) {
         const key = `${start.x},${start.y}`;
-        partySpritesMap[key] = partySpritesMap[key] || [];
+        const baseSprites = [];
+        const activeSpritesFallback = [];
+
         for (const jw of jugadores) {
           try {
             const sel = jw.selected_personaje || null;
             let spr = null;
             if (sel && sel.sprite) spr = sel.sprite;
             else if (sel && sel.nombre) {
-              // intentar derivar local path por nombre (limpio el nombre)
-              const clean = String(sel.nombre).toLowerCase().replace(/[_\s]+/g, '');
-              // buscar en los already computed spriteById map (por nombre)
+              const cleanName = String(sel.nombre)
+                .toLowerCase()
+                .replace(/[_\s]+/g, "");
               for (const [, v] of spriteById) {
-                if (String(v).toLowerCase().includes(clean)) { spr = v; break; }
+                if (String(v).toLowerCase().includes(cleanName)) {
+                  spr = v;
+                  break;
+                }
               }
             }
-            if (spr) partySpritesMap[key].push(spr);
-          } catch (e) { /* noop */ }
+
+            if (spr) {
+              const pjIdSel =
+                (sel && sel.id) ||
+                jw.selected_personaje_id ||
+                jw.selected_personaje_db_id;
+              const isActiveHere =
+                activePersonajeIdStr &&
+                pjIdSel != null &&
+                String(pjIdSel) === activePersonajeIdStr;
+              if (isActiveHere) activeSpritesFallback.push(spr);
+              else baseSprites.push(spr);
+            }
+          } catch (e) {}
+        }
+
+        if (baseSprites.length || activeSpritesFallback.length) {
+          partySpritesMap[key] = [...baseSprites, ...activeSpritesFallback];
         }
       }
-    } catch (e) { /* noop */ }
+    } catch (e) {}
   }
 
   // identificar el personaje del usuario actual
-  const mySlot = user ? jugadores.find(j => Number(j.id) === Number(user.id)) : null;
-  const mySelectedPersonajeId = mySlot ? (mySlot.selected_personaje?.id || mySlot.selected_personaje_id || null) : null;
-  console.debug('[MapView] mySlot:', mySlot, 'mySelectedPersonajeId:', mySelectedPersonajeId, 'turnoActivo:', turnoActivo);
-  const myJugada = jugadas.find(j => String(j.jugador_id) === String(mySelectedPersonajeId));
-  const myTurn = myJugada ? myJugada.turno : null;
-  // Robust active-turn check: map server personajeId back to a jugador slot if possible
+  const mySlot = user
+    ? (jugadores || []).find((j) => Number(j.id) === Number(user.id))
+    : null;
+  const mySelectedPersonajeId = mySlot
+    ? mySlot.selected_personaje?.id || mySlot.selected_personaje_id || null
+    : null;
+  console.debug(
+    "[MapView] mySlot:",
+    mySlot,
+    "mySelectedPersonajeId:",
+    mySelectedPersonajeId,
+    "turnoActivo:",
+    turnoActivo
+  );
+  const myJugada = (jugadas || []).find(
+    (j) => String(j.jugador_id) === String(mySelectedPersonajeId)
+  );
+
+  // Chequeo de turno activo
   let myTurnActive = false;
-  let activeJugadorForTurn = null;
-  if (turnoActivo) {
-    activeJugadorForTurn = jugadores.find((j) =>
-      String(j.selected_personaje?.id) === String(turnoActivo.personajeId) ||
-      String(j.selected_personaje_id) === String(turnoActivo.personajeId) ||
-      String(j.id) === String(turnoActivo.personajeId)
-    );
-    console.debug('[MapView] activeJugador for turno:', activeJugadorForTurn);
-    if (activeJugadorForTurn) {
-      myTurnActive = Number(activeJugadorForTurn.id) === Number(user?.id);
-    } else {
-      myTurnActive = String(turnoActivo.personajeId) === String(mySelectedPersonajeId);
-    }
+
+  if (turnoActivo && mySelectedPersonajeId) {
+    // Es mi turno si el personaje activo en el turno es el personaje que yo tengo seleccionado
+    myTurnActive =
+      String(turnoActivo.personajeId) === String(mySelectedPersonajeId);
   }
-  // Compute numeric personaje id to send to backend: prefer DB-resolved id from WS
+
+  // ID numérico para el backend
   let mySelectedPersonajeNumericId = mySelectedPersonajeId;
 
-  // if we have a mySlot (usuario info from WS), prefer the explicit DB id provided by the server
   if (mySlot) {
-    // 1) prefer explicit DB id sent by server (selected_personaje_db_id)
-    if (mySlot.selected_personaje_db_id && /^\d+$/.test(String(mySlot.selected_personaje_db_id))) {
+    if (
+      mySlot.selected_personaje_db_id &&
+      /^\d+$/.test(String(mySlot.selected_personaje_db_id))
+    ) {
       mySelectedPersonajeNumericId = Number(mySlot.selected_personaje_db_id);
-    }
-    // 2) else prefer selected_personaje.id if it's numeric
-    else if (mySlot.selected_personaje && /^\d+$/.test(String(mySlot.selected_personaje.id))) {
+    } else if (
+      mySlot.selected_personaje &&
+      /^\d+$/.test(String(mySlot.selected_personaje.id))
+    ) {
       mySelectedPersonajeNumericId = Number(mySlot.selected_personaje.id);
     }
   }
 
-  // 3) If still not numeric, attempt to resolve by matching actor nombre in sortedOrder
   if (!/^\d+$/.test(String(mySelectedPersonajeNumericId))) {
-    const norm = (s) => String(s || '').toLowerCase().replace(/[_\s]+/g, '').trim();
-    const found = sortedOrder.find(o => norm(o.actor?.nombre) === norm(mySelectedPersonajeNumericId) || norm(String(o.actor?.id || '')) === norm(mySelectedPersonajeNumericId));
+    const norm = (s) =>
+      String(s || "")
+        .toLowerCase()
+        .replace(/[_\s]+/g, "")
+        .trim();
+    const found = sortedOrder.find(
+      (o) =>
+        norm(o.actor?.nombre) === norm(mySelectedPersonajeNumericId) ||
+        norm(String(o.actor?.id || "")) === norm(mySelectedPersonajeNumericId)
+    );
     if (found) mySelectedPersonajeNumericId = found.actor.id;
   }
 
-  // Final guard: if still no numeric id, block moving and show message in UI
-  if (!mySelectedPersonajeNumericId || !/^\d+$/.test(String(mySelectedPersonajeNumericId))) {
-    // this will be handled by the handlers before calling moveTo (alerts etc.)
+  const movimientosRestantes = turnoActivo?.movimientos_restantes ?? 0;
+
+  // ✅ Solo puedes mover si: tienes personaje + es tu turno + quedan movimientos
+  const canMove =
+    !!mySelectedPersonajeNumericId && myTurnActive && movimientosRestantes > 0;
+
+  // ✅ Calcular casillas ortogonales accesibles desde la posición actual
+  const allowedTiles = new Set();
+  if (canMove && myJugada) {
+    const curX = Number(myJugada.x);
+    const curY = Number(myJugada.y);
+
+    const candidatos = [
+      { x: curX + 1, y: curY },
+      { x: curX - 1, y: curY },
+      { x: curX, y: curY + 1 },
+      { x: curX, y: curY - 1 },
+    ];
+
+    for (const dest of candidatos) {
+      const casillaExists = casillas.find(
+        (ca) => Number(ca.x) === dest.x && Number(ca.y) === dest.y
+      );
+      if (!casillaExists) continue;
+
+      const tipo = String(casillaExists.tipo || "").toLowerCase();
+      // No permitir inaccesibles
+      if (tipo.includes("inacces")) continue;
+
+      allowedTiles.add(`${casillaExists.x},${casillaExists.y}`);
+    }
   }
 
   const handleTileClick = async (c) => {
     try {
-      // si no hay personaje seleccionado por mi, no mover
-      if (!mySelectedPersonajeNumericId) { alert('No tienes personaje seleccionado en esta partida'); return; }
-      // comprobar si es mi turno (comparar con servidor via WS)
-      if (!myTurnActive) { alert('No es tu turno'); return; }
-      if ((turnoActivo.movimientos_restantes || 0) <= 0) { alert('No te quedan movimientos'); return; }
+      // Si no puedes mover o la casilla no está en allowedTiles, ignorar
+      const key = `${c.x},${c.y}`;
+      if (!canMove || !allowedTiles.has(key)) return;
 
-      // comprobar localmente que la casilla pertenece a este mapa antes de llamar al backend
-      const casillaExists = casillas.find(ca => Number(ca.x) === Number(c.x) && Number(ca.y) === Number(c.y));
-      if (!casillaExists) {
-        console.warn('[MapView] Bloqueando solicitud local: casilla destino no pertenece al mapa', { destino: c, mapaId: mapa?.id });
-        alert('La casilla destino no pertenece a este mapa (verifica coordenadas)');
+      if (!mySelectedPersonajeNumericId) {
+        alert("No tienes personaje seleccionado en esta partida");
         return;
       }
 
-      // bloquear casillas según tipo (cofre / inaccesible)
-      try {
-        const tipo = String(casillaExists.tipo || '').toLowerCase();
-        if (tipo.includes('cofre')) { alert('No puedes moverte: la casilla es un Cofre'); return; }
-        if (tipo.includes('inaccesible')) { alert('No puedes moverte: la casilla es Inaccesible'); return; }
-      } catch (e) { /* noop */ }
+      const casillaExists = casillas.find(
+        (ca) =>
+          Number(ca.x) === Number(c.x) && Number(ca.y) === Number(c.y)
+      );
+      if (!casillaExists) {
+        console.warn(
+          "[MapView] Bloqueando solicitud local: casilla destino no pertenece al mapa",
+          { destino: c, mapaId: mapa?.id }
+        );
+        alert(
+          "La casilla destino no pertenece a este mapa (verifica coordenadas)"
+        );
+        return;
+      }
 
-      // enviar movimiento usando el id numérico resuelto
+      // Aquí solo revalidamos que no sea inaccesible por si acaso
+      try {
+        const tipo = String(casillaExists.tipo || "").toLowerCase();
+        if (tipo.includes("inacces")) {
+          alert("No puedes moverte: la casilla es Inaccesible");
+          return;
+        }
+      } catch (e) {}
+
+      // Movimiento directo a una casilla vecina válida
       await moveTo(mySelectedPersonajeNumericId, c.x, c.y);
-      // opcional: podríamos solicitar al backend el siguiente turno o actualizar jugadas
-      window.location.reload();
+      // Sin reload: el estado + WS actualizan la UI
     } catch (e) {
-      console.error('Error moviendo a casilla', e);
-      alert(e?.response?.data?.error || 'Error moviendo personaje');
+      console.error("Error moviendo a casilla", e);
+      alert(e?.response?.data?.error || "Error moviendo personaje");
     }
   };
 
-  // mueve TODO el equipo UNA casilla en la dirección (dx,dy) por cada click
-  const moveTeam = async (dx, dy) => {
+  const activeJugadorUi = activePersonajeIdStr
+    ? jugadorByPersonajeId[activePersonajeIdStr] || null
+    : null;
+  const nombreJugadorTurno = turnoActivo
+    ? activeJugadorUi?.username ||
+      (turnoActivo.personajeId
+        ? `Personaje ${turnoActivo.personajeId}`
+        : "—")
+    : "—";
+  const textoTurno = turnoActivo
+    ? `Es el turno de ${nombreJugadorTurno}, le quedan ${movimientosRestantes} movimientos...`
+    : "Esperando próximo turno...";
+
+  // 👇 handler del botón "Abandonar"
+  const handleAbandonar = async () => {
+    const ok = window.confirm(
+      "Si abandonas, la partida se perderá para todos los jugadores.\n\n¿Seguro que quieres salir?"
+    );
+    if (!ok) return;
+
     try {
-      // solo permitir mover si es mi turno activo
-      if (!myTurnActive) { alert('No es tu turno'); return; }
-      if ((turnoActivo.movimientos_restantes || 0) <= 0) { alert('No te quedan movimientos'); return; }
-
-      // obtener posición actual del personaje activo
-      const myJ = (jugadas || []).find(j => String(j.jugador_id) === String(mySelectedPersonajeNumericId));
-      if (!myJ) { alert('No se conoce la posición de tu personaje'); return; }
-      const curX = Number(myJ.x);
-      const curY = Number(myJ.y);
-      const newX = curX + dx;
-      const newY = curY + dy;
-
-      // comprobar localmente la existencia de la casilla destino
-      const casillaExists = casillas.find(ca => Number(ca.x) === Number(newX) && Number(ca.y) === Number(newY));
-      if (!casillaExists) {
-        console.warn('[MapView] Movimiento bloqueado local: casilla destino no pertenece al mapa', { dest: { x: newX, y: newY }, mapaId: mapa?.id });
-        alert('La casilla destino no pertenece a este mapa');
-        return;
+      if (partidaId) {
+        await deletePartida(partidaId);
       }
-
-      // bloquear casillas según tipo (cofre / inaccesible)
-      try {
-        const tipo = String(casillaExists.tipo || '').toLowerCase();
-        if (tipo.includes('cofre')) { alert('Movimiento bloqueado: la casilla de destino es un Cofre'); return; }
-        if (tipo.includes('inacces')) { alert('Movimiento bloqueado: la casilla de destino es Inaccesible'); return; }
-      } catch (e) { /* noop */ }
-
-      // realizar la llamada usando el id NUMÉRICO del personaje activo; el backend moverá a todos los participantes
-      try {
-        await moveTo(mySelectedPersonajeNumericId, newX, newY);
-      } catch (e) {
-        console.error('Movimiento bloqueado para jugador', mySelectedPersonajeNumericId, e);
-        alert(e?.response?.data?.error || 'Movimiento bloqueado para el equipo');
-        return;
-      }
-
-      // confiar en WS para actualizar UI
     } catch (e) {
-      console.error('Error moviendo equipo', e);
-      alert('Error moviendo el equipo');
+      console.error("Error eliminando partida", e);
+    } finally {
+      try {
+        navigate("/landing");
+      } catch (e) {
+        window.location.replace("/landing");
+      }
     }
   };
 
   return (
-    <div
-      style={{
-        width: "100vw",
-        height: "100vh",
-        background: "#000",
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        overflow: "hidden",
-        fontFamily: "'Press Start 2P', cursive",
-        color: "white",
-      }}
-    >
-      {/* 🔷 MARCOS + RETRATOS SIN ESCALAR */}
-      <div
-        style={{
-          display: "flex",
-          gap: 20,
-          marginTop: 20,
-          justifyContent: "center",
-          alignItems: "center",
-        }}
-      >
-        {sortedOrder.map((slot, i) => (
-          <div
-            key={i}
-            style={{
-              position: "relative",
-              display: "inline-block",
-            }}
-          >
-            {/* Retrato atrás del marco, sin escalar */}
-            {slot.actor.portrait && (
-              <img
-                src={slot.actor.portrait}
-                alt={slot.actor.nombre}
-                style={{
-                  position: "absolute",
-                  top: "50%",
-                  left: "50%",
-                  transform: "translate(-50%, -50%)",
-                  zIndex: 1,
-                  imageRendering: "pixelated",
-                  pointerEvents: "none",
-                }}
-              />
-            )}
+    <div className="map-root">
+      {/* 🔷 MARCOS + RETRATOS + NOMBRE DE USUARIO ARRIBA */}
+      <div className="map-header">
+        {sortedOrder.map((slot, i) => {
+          const pjId = slot.actor?.id;
+          const owner = jugadorByPersonajeId[String(pjId)] || null;
+          const username = owner?.username || "—";
+          const isActive =
+            activePersonajeIdStr &&
+            String(pjId) === String(activePersonajeIdStr);
 
-            {/* Marco en tamaño ORIGINAL */}
-            <img
-              src={marco}
-              alt="Marco"
-              style={{
-                position: "relative",
-                zIndex: 2,
-                display: "block",
-                imageRendering: "pixelated",
-                pointerEvents: "none",
-              }}
-            />
-            {/* badge de movimientos restantes */}
-            {(() => {
-              const pjId = slot.actor?.id;
-              const j = jugadas.find(x => String(x.jugador_id) === String(pjId));
-              const restos = j ? (j.movimientos_restantes || 0) : 0;
-              if (restos != null) {
-                return (
-                  <div style={{ position: 'absolute', right: 2, top: 2, zIndex: 3, background: '#0008', padding: '2px 6px', borderRadius: 6, fontSize: 10 }}>
-                    {restos} mv
-                  </div>
-                );
-              }
-              return null;
-            })()}
-          </div>
-        ))}
+          return (
+            <div key={i} className="map-slot">
+              {/* Nombre de usuario encima del retrato */}
+              <div
+                className={
+                  "map-slot-username" +
+                  (isActive ? " map-slot-username--active" : "")
+                }
+              >
+                {username}
+              </div>
+
+              <div className="map-slot-frame-wrapper">
+                {/* Retrato atrás del marco, sin escalar */}
+                {slot.actor.portrait && (
+                  <img
+                    src={slot.actor.portrait}
+                    alt={slot.actor.nombre}
+                    className="map-slot-portrait"
+                  />
+                )}
+
+                {/* Marco en tamaño ORIGINAL */}
+                <img
+                  src={marco}
+                  alt="Marco"
+                  className="map-slot-frame"
+                />
+              </div>
+            </div>
+          );
+        })}
       </div>
 
       {/* 🔷 MAPA + GRID */}
-      <div
-        style={{
-          width: "100%",
-          flex: 1,
-          display: "flex",
-          justifyContent: "center",
-          alignItems: "center",
-          position: "relative",
-        }}
-      >
-        {/* Fondo GIF */}
+      <div className="map-main">
         {fondoMapa && (
           <img
             src={fondoMapa}
-            style={{
-              position: "absolute",
-              top: "50%",
-              left: "50%",
-              transform: "translate(-50%, -50%)",
-              imageRendering: "pixelated",
-            }}
+            className="map-background"
           />
         )}
 
-        {/* Grid */}
         <Grid
           casillas={casillas}
           pos={pos}
           onTileClick={handleTileClick}
           partySprites={partySprites}
           partySpritesMap={partySpritesMap}
+          canMove={canMove}
+          allowedTiles={allowedTiles} // ⬅ aquí van las casillas verdes del turno
         />
-        <div style={{ position: 'absolute', top: 10, right: 10 }}>
-          <MovementControls
-            onUp={() => moveTeam(0, 1)}
-            onDown={() => moveTeam(0, -1)}
-            onLeft={() => moveTeam(-1, 0)}
-            onRight={() => moveTeam(1, 0)}
-          />
-        </div>
-        <div style={{ position: 'absolute', top: 10, left: 10, background: '#0008', padding: '6px 10px', borderRadius: 6, fontSize: 12 }}>
-          <strong>Turno:</strong>{' '}
-          {activeJugadorForTurn ? (
-            <span>{activeJugadorForTurn.username || activeJugadorForTurn.id} — {turnoActivo?.movimientos_restantes ?? 0} mv</span>
-          ) : (
-            <span>{turnoActivo?.personajeId ? String(turnoActivo.personajeId) : '—'} — {turnoActivo?.movimientos_restantes ?? 0} mv</span>
-          )}
-        </div>
+
+        {/* Texto de turno sobre el mapa */}
+        <div className="map-turn-banner">{textoTurno}</div>
       </div>
 
-      {/* 🔷 Nombre del mapa abajo en 8 bits */}
-      <div style={{ marginBottom: 25, fontSize: 18 }}>
-        {mapa.nombre}
-      </div>
+      {/* Nombre del mapa abajo */}
+      <div className="map-name">{mapa.nombre}</div>
+
+      <button
+        onClick={handleAbandonar}
+        className="map-abandon-button"
+      >
+        Abandonar partida
+      </button>
     </div>
   );
 }

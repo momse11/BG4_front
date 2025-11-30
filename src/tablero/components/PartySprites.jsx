@@ -1,35 +1,48 @@
 export default function PartySprites({ sprites = [] }) {
-  const OFFSET = 15;
+  const OFFSET = 16;
+  const total = sprites.length;
+
+  // Definimos posiciones tipo rombo:
+  //   back:    (0, -OFFSET)
+  //   left:    (-OFFSET, 0)
+  //   right:   (OFFSET, 0)
+  //   front:   (0, OFFSET)
+  //
+  // El último sprite del array es el "front" (el que juega este turno).
+  if (!total) return null;
+
+  const positionsForOthers = [
+    { x: 0, y: -OFFSET },      // back
+    { x: -OFFSET, y: 0 },      // left
+    { x: OFFSET, y: 0 },       // right
+  ];
 
   return (
     <div
       style={{
         position: "absolute",
-        top: "5%",
+        top: "50%",
         left: "50%",
-        // ⬆⬆ SUBIMOS EL GRUPO COMPLETO DE SPRITES
         transform: "translate(-50%, -60%)",
         pointerEvents: "none",
         zIndex: 500,
       }}
     >
       {sprites.map((src, i) => {
+        const isFront = i === total - 1;
+
         let x = 0;
         let y = 0;
 
-        // Posiciones estilo ROMBO con separación 15px
-        if (i === 0) {
+        if (isFront) {
+          // Adelante del rombo
           x = 0;
-          y = 0;
-        } else if (i === 1) {
-          x = -OFFSET;
           y = OFFSET;
-        } else if (i === 2) {
-          x = OFFSET;
-          y = OFFSET;
-        } else if (i === 3) {
-          x = 0;
-          y = OFFSET * 2;
+        } else {
+          // repartimos los demás en back / left / right
+          const pos = positionsForOthers[i] || positionsForOthers[positionsForOthers.length - 1];
+          x = pos.x;
+          y = pos.y;
         }
 
         return (
@@ -44,6 +57,7 @@ export default function PartySprites({ sprites = [] }) {
               transform: "translate(-50%, -50%)",
               imageRendering: "pixelated",
               pointerEvents: "none",
+              zIndex: isFront ? 3 : 2,
             }}
           />
         );
