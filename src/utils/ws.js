@@ -208,11 +208,11 @@ export function usePartidaWS(partidaId, jugador, options = {}) {
                   const delay = Math.max(0, Number(startAt) - Date.now());
                   window.__nn_combat_nav_timer = setTimeout(() => {
                     try {
-                      window.history.pushState({}, '', targetPath);
-                      window.dispatchEvent(new PopStateEvent('popstate'));
-                    } catch (e) {
-                      // fallback a navegación completa
+                      // Usar navegación completa para asegurar que React Router recargue la ruta
+                      // Esto garantiza que CombatView se monte correctamente con todos los datos
                       window.location.href = targetPath;
+                    } catch (e) {
+                      console.error('[WS] failed to navigate to combat', e);
                     }
                   }, delay);
                   console.debug('[WS] scheduled navigation to', targetPath, 'in', delay, 'ms');

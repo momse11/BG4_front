@@ -40,25 +40,37 @@ export default function CombatView() {
   const location = useLocation();
   const navigate = useNavigate();
   // Hidratación sincrónica desde localStorage si no hay state (evita perder datos en navigation full reload)
-  let initial = location.state?.combate || null;
+  let initial = location.state?.combate || location.state || null;
   if (!initial) {
     try {
       const storedRaw = typeof window !== 'undefined' ? localStorage.getItem(`combat_${combateId}`) : null;
       if (storedRaw) {
         const parsed = JSON.parse(storedRaw);
-        initial = parsed?.combate || parsed?.combat || parsed || null;
+        initial = parsed || null;
       }
     } catch (e) {
       // ignore parse errors
     }
   }
 
-  // aceptar dos formas: { combate, orden, turnoActual, hpActual } o directamente el objeto 'combate'
-  const initialCombatObj = initial && (initial.combate || initial) ? (initial.combate || initial) : null;
-  const initialRawOrden = initial && (initial.orden || initial.ordenIniciativa) ? (initial.orden || initial.ordenIniciativa) : (initial?.orden || []);
-  const initialOrden = normalizeOrden(initialRawOrden || []);
-  const initialTurno = initial && (initial.turnoActual || initial.turno) ? (initial.turnoActual || initial.turno) : null;
-  const initialHp = initial && initial.hpActual ? initial.hpActual : (initial?.hpActual || {});
+  // aceptar múltiples formas de payload:
+  // 1. { combate: {...}, orden: [...], turnoActual: {...}, hpActual: {...}, actores: [...] } (backend broadcast)
+  // 2. { combate: {...ordenIniciativa inside} } (solo objeto combate)
+  const initialCombatObj = initial?.combate || (initial?.id ? initial : null);
+  
+  // Buscar orden en múltiples lugares con prioridad
+  let initialRawOrden = [];
+  if (initial?.orden && Array.isArray(initial.orden) && initial.orden.length > 0) {
+    initialRawOrden = initial.orden;
+  } else if (initialCombatObj?.ordenIniciativa && Array.isArray(initialCombatObj.ordenIniciativa)) {
+    initialRawOrden = initialCombatObj.ordenIniciativa;
+  } else if (initialCombatObj?.orden && Array.isArray(initialCombatObj.orden)) {
+    initialRawOrden = initialCombatObj.orden;
+  }
+  
+  const initialOrden = normalizeOrden(initialRawOrden);
+  const initialTurno = initial?.turnoActual || initial?.turno || null;
+  const initialHp = initial?.hpActual || {};
 
   const [combate, setCombate] = useState(initialCombatObj || null);
   const [orden, setOrden] = useState(initialOrden || []);
@@ -87,17 +99,32 @@ export default function CombatView() {
           return;
         }
         const data = JSON.parse(stored);
-        const incomingCombat = data.combate || data.combat || data;
-        const incomingOrden = data.orden || data.ordenIniciativa || [];
+        console.debug('[CombatView] parsed localStorage data:', data);
+        
+        const incomingCombat = data.combate || (data.id ? data : null);
+        
+        // Buscar orden con la misma lógica que arriba
+        let incomingOrden = [];
+        if (data.orden && Array.isArray(data.orden) && data.orden.length > 0) {
+          incomingOrden = data.orden;
+        } else if (incomingCombat?.ordenIniciativa && Array.isArray(incomingCombat.ordenIniciativa)) {
+          incomingOrden = incomingCombat.ordenIniciativa;
+        } else if (incomingCombat?.orden && Array.isArray(incomingCombat.orden)) {
+          incomingOrden = incomingCombat.orden;
+        }
+        
         const incomingTurno = data.turnoActual || data.turno || null;
         const incomingHp = data.hpActual || {};
+        
         if (incomingCombat) setCombate(incomingCombat);
         // IMPORTANT: normalizar y deduplicar la orden antes de setear
         if (Array.isArray(incomingOrden) && incomingOrden.length) {
-          setOrden(normalizeOrden(incomingOrden));
+          const normalized = normalizeOrden(incomingOrden);
+          console.debug('[CombatView] setting orden:', normalized);
+          setOrden(normalized);
         }
         if (incomingTurno) setTurnoActual(incomingTurno);
-        if (incomingHp) setHpActual(incomingHp);
+        if (incomingHp && Object.keys(incomingHp).length > 0) setHpActual(incomingHp);
         if (data.actores) setDebugActors(data.actores);
       } catch (e) {
         console.debug('No session combat payload or parse error on recheck', e);
@@ -108,36 +135,33 @@ export default function CombatView() {
     return () => clearTimeout(t);
   }, [combateId]);
 
-  // Escuchar evento global disparado por `ws.js` cuando llega COMBAT_STARTED
+  // BroadcastChannel: escuchar updates de COMBAT_STARTED para hidratar estado si llega más tarde
   useEffect(() => {
-    const handler = (ev) => {
-      try {
-        const payload = ev.detail || ev || {};
-        const data = payload.payload || payload;
-        const combateObj = data.combate || data.combat || data;
-        const incomingOrden = data.orden || data.ordenIniciativa || [];
-        const incomingTurno = data.turnoActual || data.turno || null;
-        const incomingHp = data.hpActual || {};
-        const incomingCombateId = (payload.combateId || payload.combateId === 0) ? payload.combateId : (combateObj && combateObj.id ? combateObj.id : null);
-        if (!String(incomingCombateId || combateObj?.id).trim()) return;
-        if (String(incomingCombateId) !== String(combateId) && String(combateObj?.id) !== String(combateId)) return;
-        if (combateObj) setCombate(combateObj);
-        if (Array.isArray(incomingOrden) && incomingOrden.length) setOrden(normalizeOrden(incomingOrden));
-        if (incomingTurno) setTurnoActual(incomingTurno);
-        if (incomingHp) setHpActual(incomingHp);
-        if (data.actores) setDebugActors(data.actores);
-      } catch (e) {
-        console.error('combat_started_remote handler error in CombatView', e);
-      }
-    };
-
+    let bc = null;
     try {
-      window.addEventListener('combat_started_remote', handler);
+      bc = new BroadcastChannel('nn_combat_channel');
+      bc.onmessage = (ev) => {
+        try {
+          const m = ev.data || {};
+          if (m && m.type === 'COMBAT_STARTED' && String(m.combateId) === String(combateId)) {
+            console.debug('[CombatView] BC COMBAT_STARTED received for', combateId, m);
+            const payload = m.payload || m;
+            const incoming = payload.combate || payload.combat || payload;
+            const incomingOrden = payload.orden || payload.ordenIniciativa || payload.orden || [];
+            const incomingTurno = payload.turnoActual || payload.turno || null;
+            const incomingHp = payload.hpActual || {};
+            if (incoming) setCombate(incoming);
+            if (Array.isArray(incomingOrden) && incomingOrden.length) setOrden(normalizeOrden(incomingOrden));
+            if (incomingTurno) setTurnoActual(incomingTurno);
+            if (incomingHp) setHpActual(incomingHp);
+            if (payload.actores) setDebugActors(payload.actores);
+          }
+        } catch (e) { console.error('CombatView BC onmessage error', e); }
+      };
     } catch (e) {
-      console.debug('Failed to register combat_started_remote listener', e);
+      console.debug('CombatView BroadcastChannel not available', e);
     }
-
-    return () => { try { window.removeEventListener('combat_started_remote', handler); } catch (e) {} };
+    return () => { try { if (bc) bc.close(); } catch (e) {} };
   }, [combateId]);
 
   useEffect(() => {

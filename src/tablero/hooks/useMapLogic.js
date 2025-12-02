@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { getMapa, getPersonaje, getJugada, moveJugador } from "../services/mapService";
-// probabilidad de encontrar enemigos tras moverse (0.25 = 25%)
-const PROBABILIDAD_ENEMIGOS = 0.25;
+
 
 const retratos = import.meta.glob(
   "/src/assets/tablero/retratos/*.{png,jpg,jpeg}",
@@ -203,33 +202,13 @@ export function useMapLogic({ mapaId, personajesIds, partidaId }) {
           });
           // si el jugador movido es el que representa pos, actualizar pos
           setPos({ x, y });
-          // Después del movimiento, chance de iniciar combate (25%)
-          try {
-            const chance = Math.random();
-            if (chance < PROBABILIDAD_ENEMIGOS && partidaId) {
-              // iniciar combate en backend con los actores en este mapa/partida
-              const actores = (personajesIds || []).map((id) => ({ entidadId: Number(id), tipo: 'PJ' }));
-              // detectar enemigos en la casilla destino usando el mapa ya cargado
-              try {
-                const casilla = (mapa && mapa.casillas) ? mapa.casillas.find(ca => Number(ca.x) === Number(x) && Number(ca.y) === Number(y)) : null;
-                if (casilla && casilla.enemigos) {
-                  const enem = Array.isArray(casilla.enemigos) ? casilla.enemigos : [casilla.enemigos];
-                  for (const e of enem) {
-                    actores.push({ tipo: 'EN', entidadId: e });
-                  }
-                }
-              } catch (e) { console.debug('No se pudo leer enemigos desde casilla', e); }
-
-              console.debug('[useMapLogic] iniciando combate con actores:', actores);
-              const combateRes = await api.post('/combate', { partidaId, actores });
-              console.debug('[useMapLogic] respuesta iniciar combate:', combateRes && combateRes.data);
-              // guardar mapping de actores resueltos (incluye ids de enemigos creados)
-              try { setCombateActores(combateRes?.data?.actores || []); } catch (e) { /* noop */ }
-              // retornar info adicional para que la UI navegue a la vista de combate
-              return { ...res.data, combate: combateRes.data, actores: combateRes?.data?.actores || [] };
-            }
-          } catch (e) {
-            console.error('Error iniciando combate tras movimiento', e);
+          
+          // ===== COMBATE AHORA SE MANEJA EN EL BACKEND =====
+          // El backend ya verifica si la casilla tiene enemigos y detona el combate automáticamente
+          // Si la respuesta incluye data de combate, la retornamos para que MapView navegue
+          if (res.data && res.data.combate) {
+            console.debug('[useMapLogic] Backend detonó combate:', res.data.combate);
+            return res.data; // Incluye combate y actores
           }
 
           return res.data;
