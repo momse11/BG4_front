@@ -4,10 +4,10 @@ import { useMapLogic } from "../hooks/useMapLogic";
 import { useContext, useMemo, useState, useEffect } from "react";
 import { AuthContext } from "../../auth/AuthProvider";
 import { usePartidaWS } from "../../utils/ws";
-import { deletePartida } from "../../utils/api";
-import { useNavigate } from "react-router-dom";
+import api, { deletePartida } from "../../utils/api";
 import Inventory from "./Inventory";
 import "../../assets/styles/map.css";
+import { useNavigate } from 'react-router-dom';
 
 const fondos = import.meta.glob("/src/assets/tablero/mapas/*", { eager: true });
 
@@ -35,7 +35,7 @@ export default function MapView({ partidaId, mapaId, personajesIds }) {
   const { jugadores, turnoActivo } = usePartidaWS(partidaId, jugadorParam);
 
   const { loading, mapa, casillas, pos, order, jugadas, moveTo } =
-    useMapLogic({ mapaId, personajesIds });
+    useMapLogic({ mapaId, personajesIds, partidaId });
 
   const activePersonajeIdStr =
     turnoActivo?.personajeId != null ? String(turnoActivo.personajeId) : null;
@@ -253,24 +253,65 @@ export default function MapView({ partidaId, mapaId, personajesIds }) {
   );
 
   const myJugada = (jugadas || []).find(
-    (j) => String(j.jugador_id) === String(mySelectedPersonajeId)
+    (j) => String(j.jugador_id) === String(mySelectedPersonajeNumericId)
   );
 
-  let myTurnActive = false;
+  // debug: asegúrate que identificadores y jugada se resuelven correctamente
+  try {
+    console.debug('[MapView] mySelectedPersonajeId:', mySelectedPersonajeId, 'mySelectedPersonajeNumericId:', mySelectedPersonajeNumericId, 'myJugada:', myJugada);
+  } catch (e) {}
 
-  if (turnoActivo && mySelectedPersonajeId) {
-    myTurnActive =
-      String(turnoActivo.personajeId) === String(mySelectedPersonajeId);
+  // determinar si es el turno del jugador actual comparando múltiples posibles IDs
+  let myTurnActive = false;
+  if (turnoActivo) {
+    const candidatoIds = new Set();
+    if (mySelectedPersonajeNumericId != null) candidatoIds.add(String(mySelectedPersonajeNumericId));
+    if (mySlot) {
+      if (mySlot.selected_personaje_db_id != null) candidatoIds.add(String(mySlot.selected_personaje_db_id));
+      if (mySlot.selected_personaje_id != null) candidatoIds.add(String(mySlot.selected_personaje_id));
+      if (mySlot.selected_personaje && mySlot.selected_personaje.id != null) candidatoIds.add(String(mySlot.selected_personaje.id));
+      // intentar mapear por nombre al orden de actores
+      const selNombre = mySlot.selected_personaje && mySlot.selected_personaje.nombre;
+      if (selNombre) {
+        const foundByName = sortedOrder.find(
+          (o) => String(o.actor?.nombre).toLowerCase() === String(selNombre).toLowerCase()
+        );
+        if (foundByName && foundByName.actor && foundByName.actor.id != null) {
+          candidatoIds.add(String(foundByName.actor.id));
+        }
+      }
+    }
+    // también si hay un actor en el orden que pertenezca al usuario, añadir su actor.id
+    const ownedActor = sortedOrder.find((o) => String(o.actor?.usuarioId) === String(user?.id));
+    if (ownedActor && ownedActor.actor && ownedActor.actor.id != null) {
+      candidatoIds.add(String(ownedActor.actor.id));
+    }
+
+    const turnoId = turnoActivo.personajeId != null ? String(turnoActivo.personajeId) : null;
+    if (turnoId && candidatoIds.has(turnoId)) myTurnActive = true;
   }
 
   const movimientosRestantes = turnoActivo?.movimientos_restantes ?? 0;
-  const canMove =
-    !!mySelectedPersonajeNumericId && myTurnActive && movimientosRestantes > 0;
+  const canMove = !!mySelectedPersonajeNumericId && myTurnActive && movimientosRestantes > 0;
 
   const allowedTiles = new Set();
-  if (canMove && myJugada) {
-    const curX = Number(myJugada.x);
-    const curY = Number(myJugada.y);
+  // determinar la jugada efectiva desde la que calculamos movimientos:
+  // 1) la jugada asociada al personaje seleccionado (myJugada)
+  // 2) fallback: la jugada del personaje que marca el turno activo
+  // 3) fallback final: la posición actual `pos` (cámara)
+  let effectiveJugada = myJugada;
+  if (!effectiveJugada && turnoActivo && turnoActivo.personajeId != null) {
+    effectiveJugada = (jugadas || []).find(
+      (j) => String(j.jugador_id) === String(turnoActivo.personajeId)
+    );
+  }
+  if (!effectiveJugada) {
+    effectiveJugada = { x: pos.x, y: pos.y };
+  }
+
+  if (canMove && effectiveJugada) {
+    const curX = Number(effectiveJugada.x);
+    const curY = Number(effectiveJugada.y);
 
     const candidatos = [
       { x: curX + 1, y: curY },
@@ -304,7 +345,7 @@ export default function MapView({ partidaId, mapaId, personajesIds }) {
 
       const casillaExists = casillas.find(
         (ca) =>
-          Number(ca.x) === Number(c.x) && Number(c.y) === Number(c.y)
+          Number(ca.x) === Number(c.x) && Number(ca.y) === Number(c.y)
       );
       if (!casillaExists) {
         console.warn(
@@ -324,8 +365,34 @@ export default function MapView({ partidaId, mapaId, personajesIds }) {
           return;
         }
       } catch (e) {}
-
-      await moveTo(mySelectedPersonajeNumericId, c.x, c.y);
+      const sendJugadorId = myJugada?.jugador_id ?? (turnoActivo?.personajeId ?? mySelectedPersonajeNumericId);
+      try {
+        console.debug('[MapView] Enviando movimiento con jugadorId:', sendJugadorId, 'miSelectedNumeric:', mySelectedPersonajeNumericId, 'myJugada:', myJugada, 'turnoActivo:', turnoActivo);
+      } catch (e) {}
+      let r;
+      try {
+        r = await moveTo(sendJugadorId, c.x, c.y);
+      } catch (err) {
+        // si el servidor responde 403, mostrar información útil
+        if (err?.response?.status === 403) {
+          console.warn('[MapView] Movimiento rechazado por servidor (403).', { sendJugadorId, turnoActivo, myJugada, mySlot });
+          alert(err?.response?.data?.error || 'No es tu turno para moverte (403)');
+        }
+        throw err;
+      }
+      // si el backend devolvió info de combate, redirigir a la vista de combate
+      if (r && r.combate) {
+        // compatibilidad: r.combate puede ser { combate, turnoActual, orden, hpActual } o directamente el combate
+        const combatePayload = r.combate;
+        const combateObj = (combatePayload && combatePayload.combate) ? combatePayload.combate : combatePayload;
+        const actoresMap = r.actores || (combatePayload && combatePayload.actores) || [];
+        if (combateObj && combateObj.id) {
+          navigate(`/partida/${partidaId}/combate/${combateObj.id}`, { state: { combate: combatePayload, actores: actoresMap } });
+          return;
+        }
+      }
+      // por defecto recargar para reflejar posición
+      window.location.reload();
     } catch (e) {
       console.error("Error moviendo a casilla", e);
       alert(e?.response?.data?.error || "Error moviendo personaje");
@@ -420,7 +487,6 @@ export default function MapView({ partidaId, mapaId, personajesIds }) {
       "Si abandonas, la partida se perderá para todos los jugadores.\n\n¿Seguro que quieres salir?"
     );
     if (!ok) return;
-
     try {
       if (partidaId) {
         await deletePartida(partidaId);
@@ -497,6 +563,60 @@ export default function MapView({ partidaId, mapaId, personajesIds }) {
           allowedTiles={allowedTiles}
         />
 
+          {/* Debug: mostrar enemigos en la casilla actual y botón forzar combate */}
+          <div style={{ position: 'absolute', bottom: 12, left: 12, background: '#0008', padding: '6px 10px', borderRadius: 6, fontSize: 12 }}>
+            <div style={{ marginBottom: 6 }}><strong>Enemigos casilla:</strong>{' '}
+              {(() => {
+                try {
+                  const current = casillas.find(ca => Number(ca.x) === Number(pos.x) && Number(ca.y) === Number(pos.y));
+                  if (!current) return '—';
+                  const enem = current.enemigos || [];
+                  if (!enem || enem.length === 0) return 'ninguno';
+                  return enem.join(', ');
+                } catch (e) { return '—'; }
+              })()}
+            </div>
+            <div>
+              <button
+                onClick={async () => {
+                  try {
+                    const current = casillas.find(ca => Number(ca.x) === Number(pos.x) && Number(ca.y) === Number(pos.y));
+                    if (!current || !current.enemigos || (Array.isArray(current.enemigos) && current.enemigos.length === 0)) {
+                      alert('No hay enemigos en la casilla actual');
+                      return;
+                    }
+                    const actores = (personajesIds || []).map((id) => ({ entidadId: Number(id), tipo: 'PJ' }));
+                    const enem = Array.isArray(current.enemigos) ? current.enemigos : [current.enemigos];
+                    for (const e of enem) {
+                      if (e == null) continue;
+                      if (typeof e === 'object') {
+                        const name = e.nombre ?? e.name ?? (e.id != null ? String(e.id) : null);
+                        if (name != null) actores.push({ tipo: 'EN', entidadId: String(name) });
+                        else actores.push({ tipo: 'EN', entidadId: JSON.stringify(e) });
+                      } else {
+                        actores.push({ tipo: 'EN', entidadId: String(e) });
+                      }
+                    }
+
+                    console.debug('[MapView] Forzando combate con actores:', actores);
+                    const combateRes = await api.post('/combate', { partidaId, actores });
+                    console.debug('[MapView] respuesta forzar combate:', combateRes && combateRes.data);
+                    const combatePayload = combateRes?.data?.combate || combateRes?.data;
+                    const actoresMap = combateRes?.data?.actores || [];
+                    if (combatePayload && combatePayload.id) {
+                      navigate(`/partida/${partidaId}/combate/${combatePayload.id}`, { state: { combate: combatePayload, actores: actoresMap } });
+                      return;
+                    }
+                    alert('Combate iniciado, pero no se devolvió id (ver consola)');
+                  } catch (e) {
+                    console.error('Error forzando combate', e);
+                    alert('Error forzando combate: ' + (e?.response?.data?.error || e.message || e));
+                  }
+                }}
+                style={{ padding: '6px 8px', fontSize: 12 }}
+              >Forzar combate (debug)</button>
+            </div>
+          </div>
         <div className="map-turn-banner">{textoTurno}</div>
       </div>
 

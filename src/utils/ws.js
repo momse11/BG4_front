@@ -179,6 +179,27 @@ export function usePartidaWS(partidaId, jugador, options = {}) {
               prev.filter((j) => Number(j.id) !== Number(leftId))
             );
           }
+
+          // COMBAT started: redirect to /partida/:partidaId/combate/:id
+          if (data?.type === 'COMBAT_STARTED') {
+            try {
+              const combate = data.combate || data.combat || null;
+              if (combate && combate.id) {
+                try { sessionStorage.setItem(`combat_${combate.id}`, JSON.stringify(data)); } catch (e) {}
+                // opcional: actualizar turnoActivo si viene en payload
+                if (data.turnoActual) {
+                  setTurnoActivo({
+                    personajeId: data.turnoActual.actorId || data.turnoActual.personajeId || null,
+                    movimientos_restantes: data.turnoActual.movimientos_restantes || 0,
+                  });
+                }
+                window.location.href = `/partida/${partidaId}/combate/${combate.id}`;
+              }
+            } catch (e) {
+              console.error('Error manejando COMBAT_STARTED', e);
+            }
+            return;
+          }
         } catch (e) {
           console.error("WS message parse error", e);
         }

@@ -1,3 +1,4 @@
+import React from 'react';
 import { Routes, Route } from 'react-router-dom';
 import Landing from '../landing/Landing-Page';
 import LandingPublic from '../landing/LandingPublic';
@@ -11,6 +12,7 @@ import PartidaEmpezada from '../partida/PartidaEmpezada';
 
 // Página del mapa
 import MapViewWrapper from '../tablero/pages/MapViewWrapper';
+import CombatView from '../tablero/pages/CombatView';
 
 export default function Routing() {
   return (
@@ -61,6 +63,18 @@ export default function Routing() {
           element={
             <ProtectedRoute>
               <MapViewWrapper />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Combate */}
+        <Route
+          path="/partida/:partidaId/combate/:combateId"
+          element={
+            <ProtectedRoute>
+              <React.Suspense fallback={<div style={{ color: 'white' }}>Cargando combate...</div>}>
+                <CombatView />
+              </React.Suspense>
             </ProtectedRoute>
           }
         />

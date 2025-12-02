@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { getMapa, getPersonaje, getJugada, moveJugador } from "../services/mapService";
+// probabilidad de encontrar enemigos tras moverse (0.25 = 25%)
+const PROBABILIDAD_ENEMIGOS = 0.25;
 
 const retratos = import.meta.glob(
   "/src/assets/tablero/retratos/*.{png,jpg,jpeg}",
@@ -35,12 +37,39 @@ function findStart(casillas) {
   return casillas.find((c) => c.tipo === "Descanso") || casillas[0];
 }
 
-export function useMapLogic({ mapaId, personajesIds }) {
+import api from '../../utils/api';
+
+function normalizeActoresForCombate(rawActores) {
+  const out = [];
+  for (const a of rawActores || []) {
+    if (!a) continue;
+    const tipo = String(a.tipo || 'PJ').toUpperCase();
+    if (tipo === 'PJ') {
+      const num = Number(a.entidadId);
+      if (Number.isFinite(num)) out.push({ tipo: 'PJ', entidadId: Number(num) });
+      else out.push({ tipo: 'PJ', entidadId: String(a.entidadId) });
+      continue;
+    }
+    // EN
+    const key = a.entidadId;
+    if (key && typeof key === 'object') {
+      const name = key.nombre ?? key.name ?? (key.id != null ? String(key.id) : null);
+      if (name != null) out.push({ tipo: 'EN', entidadId: String(name) });
+      else out.push({ tipo: 'EN', entidadId: JSON.stringify(key) });
+    } else {
+      out.push({ tipo: 'EN', entidadId: String(key) });
+    }
+  }
+  return out;
+}
+
+export function useMapLogic({ mapaId, personajesIds, partidaId }) {
   const [mapa, setMapa] = useState(null);
   const [loading, setLoading] = useState(true);
   const [order, setOrder] = useState([]);
   const [pos, setPos] = useState({ x: 1, y: 1 });
   const [jugadas, setJugadas] = useState([]);
+  const [combateActores, setCombateActores] = useState([]);
 
   useEffect(() => {
     async function load() {
@@ -125,15 +154,17 @@ export function useMapLogic({ mapaId, personajesIds }) {
       setJugadas((prev) => {
         const copy = [...prev];
         for (const m of moved) {
-          const idx = copy.findIndex((j) => String(j.jugador_id) === String(m.personaje_id));
+          // moved payloads pueden traer "personaje_id" o "personajeId" o "jugador_id"
+          const movedPersonajeId = m.personaje_id ?? m.personajeId ?? m.jugador_id ?? m.personaje;
+          const idx = copy.findIndex((j) => String(j.jugador_id) === String(movedPersonajeId));
           if (idx >= 0) {
             copy[idx] = { ...copy[idx], x: m.x, y: m.y };
             // si el payload trae movimientos_restantes global para el actor, actualizarlo
-            if (data.movimientos_restantes !== undefined && String(copy[idx].jugador_id) === String(data.jugadorId)) {
+            if (data.movimientos_restantes !== undefined && String(copy[idx].jugador_id) === String(data.jugadorId ?? data.jugador_id ?? movedPersonajeId)) {
               copy[idx].movimientos_restantes = data.movimientos_restantes;
             }
           } else {
-            copy.push({ jugador_id: m.personaje_id, x: m.x, y: m.y, turno: null, movimientos_restantes: (data.movimientos_restantes || 0) });
+            copy.push({ jugador_id: movedPersonajeId, x: m.x, y: m.y, turno: null, movimientos_restantes: (data.movimientos_restantes || 0) });
           }
         }
         return copy;
@@ -141,7 +172,7 @@ export function useMapLogic({ mapaId, personajesIds }) {
 
       // actualizar pos si uno de los movidos es el primer personaje de la lista (o el que representa la cámara)
       const primary = personajesIds && personajesIds.length > 0 ? String(personajesIds[0]) : null;
-      const primaryMoved = moved.find(m => String(m.personaje_id) === primary);
+      const primaryMoved = moved.find(m => String(m.personaje_id ?? m.personajeId ?? m.jugador_id) === primary);
       if (primaryMoved) setPos({ x: primaryMoved.x, y: primaryMoved.y });
     }
 
@@ -172,6 +203,35 @@ export function useMapLogic({ mapaId, personajesIds }) {
           });
           // si el jugador movido es el que representa pos, actualizar pos
           setPos({ x, y });
+          // Después del movimiento, chance de iniciar combate (25%)
+          try {
+            const chance = Math.random();
+            if (chance < PROBABILIDAD_ENEMIGOS && partidaId) {
+              // iniciar combate en backend con los actores en este mapa/partida
+              const actores = (personajesIds || []).map((id) => ({ entidadId: Number(id), tipo: 'PJ' }));
+              // detectar enemigos en la casilla destino usando el mapa ya cargado
+              try {
+                const casilla = (mapa && mapa.casillas) ? mapa.casillas.find(ca => Number(ca.x) === Number(x) && Number(ca.y) === Number(y)) : null;
+                if (casilla && casilla.enemigos) {
+                  const enem = Array.isArray(casilla.enemigos) ? casilla.enemigos : [casilla.enemigos];
+                  for (const e of enem) {
+                    actores.push({ tipo: 'EN', entidadId: e });
+                  }
+                }
+              } catch (e) { console.debug('No se pudo leer enemigos desde casilla', e); }
+
+              console.debug('[useMapLogic] iniciando combate con actores:', actores);
+              const combateRes = await api.post('/combate', { partidaId, actores });
+              console.debug('[useMapLogic] respuesta iniciar combate:', combateRes && combateRes.data);
+              // guardar mapping de actores resueltos (incluye ids de enemigos creados)
+              try { setCombateActores(combateRes?.data?.actores || []); } catch (e) { /* noop */ }
+              // retornar info adicional para que la UI navegue a la vista de combate
+              return { ...res.data, combate: combateRes.data, actores: combateRes?.data?.actores || [] };
+            }
+          } catch (e) {
+            console.error('Error iniciando combate tras movimiento', e);
+          }
+
           return res.data;
         }
         return null;
