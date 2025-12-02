@@ -6,9 +6,10 @@ import { AuthContext } from '../../auth/AuthProvider';
 // Hook simple para suscribirse a eventos de combate por partida
 // - partidaId: id de la partida a unirse
 // - onEvent: callback(event) cuando llega un evento de tipo COMBAT_*
-export default function useCombateWS(partidaId, onEvent) {
+export default function useCombateWS(partidaId, onEvent, options = {}) {
   const { user } = useContext(AuthContext);
   const { sendMessage, messages, connected } = useWebSocket();
+  const { onPartidaDeleted } = options;
   const lastIndex = useRef(0);
 
   useEffect(() => {
@@ -29,6 +30,17 @@ export default function useCombateWS(partidaId, onEvent) {
     for (let i = start; i < messages.length; i++) {
       const m = messages[i];
       if (!m) continue;
+      // si la partida fue eliminada, manejar con prioridad
+      if (m.type === 'PARTIDA_DELETED' && String(m.partidaId) === String(partidaId)) {
+        try {
+          if (onPartidaDeleted) onPartidaDeleted(m);
+          else {
+            try { window.location.href = '/landing'; } catch (e) {}
+          }
+        } catch (e) { console.error('Error onPartidaDeleted handler', e); }
+        continue;
+      }
+
       // filtrar por eventos de combate
       if (typeof m.type === 'string' && m.type.startsWith('COMBAT_')) {
         try {

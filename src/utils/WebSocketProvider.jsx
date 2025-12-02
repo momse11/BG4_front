@@ -1,46 +1,63 @@
-import { createContext, useContext, useEffect, useRef, useState } from "react";
-import { useLocation } from 'react-router-dom'
-import { AuthContext } from "../auth/AuthProvider";
-import api from './api'
+import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
+import { useLocation } from 'react-router-dom';
+import { AuthContext } from '../auth/AuthProvider';
+import api from './api';
 
-export const WebSocketContext = createContext();
+const WS_URL = (typeof window !== 'undefined' && window.location && window.location.hostname === 'localhost') ? 'ws://localhost:3000/ws' : 'ws://localhost:3000/ws';
+
+export const WebSocketContext = createContext(null);
 
 export function WebSocketProvider({ children }) {
   const { user } = useContext(AuthContext);
-  const ws = useRef(null);
+  const wsRef = useRef(null);
   const [connected, setConnected] = useState(false);
   const [messages, setMessages] = useState([]);
+  const reconnectRef = useRef({ attempts: 0, timer: null, shouldReconnect: true });
 
   useEffect(() => {
     if (!user) return;
+    reconnectRef.current.shouldReconnect = true;
 
-    ws.current = new WebSocket("ws://localhost:3000/ws");
-
-    ws.current.onopen = () => {
-      console.log("WebSocket conectado");
-      setConnected(true);
-    };
-
-    ws.current.onmessage = (event) => {
+    function connect() {
       try {
-        const data = JSON.parse(event.data);
-        setMessages((prev) => [...prev, data]);
+        const ws = new WebSocket(WS_URL);
+        wsRef.current = ws;
+
+        ws.onopen = () => {
+          reconnectRef.current.attempts = 0;
+          setConnected(true);
+          console.debug('[WebSocketProvider] connected');
+        };
+
+        ws.onmessage = (ev) => {
+          try {
+            const data = JSON.parse(ev.data);
+            setMessages((prev) => [...prev, data]);
+          } catch (e) {
+            console.error('[WebSocketProvider] parse message error', e);
+          }
+        };
+
+        ws.onclose = () => {
+          setConnected(false);
+          if (!reconnectRef.current.shouldReconnect) return;
+          reconnectRef.current.attempts += 1;
+          const delay = Math.min(30000, 1000 * Math.pow(2, reconnectRef.current.attempts));
+          reconnectRef.current.timer = setTimeout(connect, delay);
+        };
+
+        ws.onerror = (err) => console.error('[WebSocketProvider] ws error', err);
       } catch (e) {
-        console.error("WS parse error:", e);
+        console.error('[WebSocketProvider] connection failed', e);
       }
-    };
+    }
 
-    ws.current.onclose = () => {
-      console.log("WebSocket desconectado");
-      setConnected(false);
-    };
-
-    ws.current.onerror = (err) => {
-      console.error("WS error:", err);
-    };
+    connect();
 
     return () => {
-      ws.current?.close();
+      reconnectRef.current.shouldReconnect = false;
+      if (reconnectRef.current.timer) clearTimeout(reconnectRef.current.timer);
+      try { if (wsRef.current) wsRef.current.close(); } catch (e) {}
     };
   }, [user]);
 
@@ -60,10 +77,8 @@ export function WebSocketProvider({ children }) {
             await api.post(`/partidas/${prev}/leave`);
           } catch (e) {
             console.debug('Auto-leave api.post failed, attempting fallback fetch', e?.response?.data || e?.message || e);
-              try {
+            try {
               const token = localStorage.getItem('token');
-              // try a raw fetch with keepalive and Authorization header as fallback
-              // Use full API base URL (includes /api/v1) to hit the backend CORS-enabled route
               await fetch(`${api.defaults.baseURL}/partidas/${prev}/leave`, {
                 method: 'POST',
                 headers: {
@@ -86,19 +101,17 @@ export function WebSocketProvider({ children }) {
     }
   }, [location, user]);
 
-  // enviar mensaje
   const sendMessage = (msg) => {
-    if (ws.current && ws.current.readyState === WebSocket.OPEN) {
-      ws.current.send(JSON.stringify(msg));
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify(msg));
     }
   };
 
   return (
-    <WebSocketContext.Provider value={{ ws: ws.current, connected, messages, sendMessage }}>
+    <WebSocketContext.Provider value={{ sendMessage, connected, messages }}>
       {children}
     </WebSocketContext.Provider>
   );
 }
 
-// Hook de uso simple
 export const useWebSocket = () => useContext(WebSocketContext);

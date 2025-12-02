@@ -387,7 +387,36 @@ export default function MapView({ partidaId, mapaId, personajesIds }) {
         const combateObj = (combatePayload && combatePayload.combate) ? combatePayload.combate : combatePayload;
         const actoresMap = r.actores || (combatePayload && combatePayload.actores) || [];
         if (combateObj && combateObj.id) {
-          navigate(`/partida/${partidaId}/combate/${combateObj.id}`, { state: { combate: combatePayload, actores: actoresMap } });
+          // normalizar orden antes de navegar para evitar duplicados o shape inconsistent
+          const rawOrden = (combatePayload && (combatePayload.orden || combatePayload.ordenIniciativa)) || [];
+          const normalizedOrden = (() => {
+            if (!Array.isArray(rawOrden)) return [];
+            const seen = new Set();
+            const out = [];
+            for (const it of rawOrden) {
+              try {
+                if (!it) continue;
+                const tipo = String(it.tipo || '').toUpperCase();
+                const idStr = String(it.entidadId ?? it.actorId ?? it.id ?? '').trim();
+                if (!idStr) continue;
+                const key = `${tipo}:${idStr}`;
+                if (seen.has(key)) continue;
+                seen.add(key);
+                out.push({ tipo, entidadId: Number.isFinite(Number(idStr)) ? Number(idStr) : idStr, iniciativa: it.iniciativa ?? null, detalle: it.detalle ?? null, nombre: it.nombre ?? it.name ?? null });
+              } catch (e) {
+                /* noop */
+              }
+            }
+            return out;
+          })();
+          // attach normalized orden into payload copy
+          const payloadWithOrden = { ...(combatePayload || {}), orden: normalizedOrden };
+          // Guardar en sessionStorage para proteger contra recargas completas (p.ej. WS navigation)
+          try {
+            localStorage.setItem(`combat_${combateObj.id}`, JSON.stringify({ combate: payloadWithOrden, actores: actoresMap }));
+            console.debug('[MapView] stored combat payload', `combat_${combateObj.id}`);
+          } catch (e) { console.debug('[MapView] failed to store combat payload', e); }
+          navigate(`/partida/${partidaId}/combate/${combateObj.id}`, { state: { combate: payloadWithOrden, actores: actoresMap } });
           return;
         }
       }
@@ -604,7 +633,28 @@ export default function MapView({ partidaId, mapaId, personajesIds }) {
                     const combatePayload = combateRes?.data?.combate || combateRes?.data;
                     const actoresMap = combateRes?.data?.actores || [];
                     if (combatePayload && combatePayload.id) {
-                      navigate(`/partida/${partidaId}/combate/${combatePayload.id}`, { state: { combate: combatePayload, actores: actoresMap } });
+                      // normalize orden before navigation
+                      const rawOrden = (combatePayload && (combatePayload.orden || combatePayload.ordenIniciativa)) || [];
+                      const normalizedOrden = Array.isArray(rawOrden)
+                        ? rawOrden.reduce((acc, it) => {
+                            try {
+                              const tipo = String(it.tipo || '').toUpperCase();
+                              const id = String(it.entidadId ?? it.actorId ?? it.id ?? '').trim();
+                              if (!id) return acc;
+                              const key = `${tipo}:${id}`;
+                              if (acc.__seen.has(key)) return acc;
+                              acc.__seen.add(key);
+                              acc.push({ tipo, entidadId: Number.isFinite(Number(id)) ? Number(id) : id, iniciativa: it.iniciativa ?? null, detalle: it.detalle ?? null, nombre: it.nombre ?? it.name ?? null });
+                            } catch (e) {}
+                            return acc;
+                          }, []).filter(Boolean)
+                        : [];
+                      const payloadWithOrden = { ...(combatePayload || {}), orden: normalizedOrden };
+                      try {
+                        localStorage.setItem(`combat_${combatePayload.id}`, JSON.stringify({ combate: payloadWithOrden, actores: actoresMap }));
+                        console.debug('[MapView] stored combat payload', `combat_${combatePayload.id}`);
+                      } catch (e) { console.debug('[MapView] failed to store combat payload', e); }
+                      navigate(`/partida/${partidaId}/combate/${combatePayload.id}`, { state: { combate: payloadWithOrden, actores: actoresMap } });
                       return;
                     }
                     alert('Combate iniciado, pero no se devolvió id (ver consola)');

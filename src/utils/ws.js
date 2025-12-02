@@ -185,15 +185,22 @@ export function usePartidaWS(partidaId, jugador, options = {}) {
             try {
               const combate = data.combate || data.combat || null;
               if (combate && combate.id) {
-                try { sessionStorage.setItem(`combat_${combate.id}`, JSON.stringify(data)); } catch (e) {}
-                // opcional: actualizar turnoActivo si viene en payload
-                if (data.turnoActual) {
-                  setTurnoActivo({
-                    personajeId: data.turnoActual.actorId || data.turnoActual.personajeId || null,
-                    movimientos_restantes: data.turnoActual.movimientos_restantes || 0,
-                  });
+                const targetPath = `/partida/${partidaId}/combate/${combate.id}`;
+                // siempre guardar el payload para que la vista pueda hidratarse tras navegación completa
+                  try {
+                    localStorage.setItem(`combat_${combate.id}`, JSON.stringify(data));
+                    console.debug('[WS] stored combat payload for', combate.id);
+                  } catch (e) { console.debug('[WS] failed to store combat payload', e); }
+                // Publicar por BroadcastChannel para que otras pestañas hagan la navegación vía SPA
+                try {
+                  const bc = new BroadcastChannel('nn_combat_channel');
+                  bc.postMessage({ type: 'COMBAT_STARTED', partidaId, combateId: combate.id, payload: data });
+                  bc.close();
+                  console.debug('[WS] broadcast COMBAT_STARTED for', combate.id);
+                } catch (e) {
+                  console.debug('[WS] BroadcastChannel failed, fallback to in-page event', e);
+                  try { window.dispatchEvent(new CustomEvent('combat_started_remote', { detail: data })); } catch (ee) {}
                 }
-                window.location.href = `/partida/${partidaId}/combate/${combate.id}`;
               }
             } catch (e) {
               console.error('Error manejando COMBAT_STARTED', e);
@@ -248,17 +255,29 @@ export function usePartidaWS(partidaId, jugador, options = {}) {
           wsRef.current &&
           wsRef.current.readyState === WebSocket.OPEN
         ) {
-          // avisamos al backend que este jugador salió del lobby
+          // Evitar enviar LEAVE si la navegación resultó en la ruta de combate
+          // (pushState + popstate vía BroadcastChannel). Esto evita que el servidor
+          // piense que el jugador salió temporalmente al navegar dentro de la SPA.
+          let skipLeave = false;
           try {
-            wsRef.current.send(
-              JSON.stringify({
-                type: "LEAVE",
-                partidaId,
-                jugadorId: jugador.id,
-              })
-            );
-          } catch (e) {
-            console.debug("Error enviando LEAVE por WS", e);
+            const path = window && window.location && window.location.pathname ? String(window.location.pathname) : '';
+            if (path.includes('/combate/')) skipLeave = true;
+          } catch (e) {}
+
+          if (!skipLeave) {
+            try {
+              wsRef.current.send(
+                JSON.stringify({
+                  type: "LEAVE",
+                  partidaId,
+                  jugadorId: jugador.id,
+                })
+              );
+            } catch (e) {
+              console.debug("Error enviando LEAVE por WS", e);
+            }
+          } else {
+            console.debug('[usePartidaWS] skipping LEAVE because navigation target is combat');
           }
 
           try {

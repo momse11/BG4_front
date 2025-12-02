@@ -39,7 +39,19 @@ export default function CombatView() {
   const { partidaId, combateId } = useParams();
   const location = useLocation();
   const navigate = useNavigate();
-  const initial = location.state?.combate || null;
+  // Hidratación sincrónica desde localStorage si no hay state (evita perder datos en navigation full reload)
+  let initial = location.state?.combate || null;
+  if (!initial) {
+    try {
+      const storedRaw = typeof window !== 'undefined' ? localStorage.getItem(`combat_${combateId}`) : null;
+      if (storedRaw) {
+        const parsed = JSON.parse(storedRaw);
+        initial = parsed?.combate || parsed?.combat || parsed || null;
+      }
+    } catch (e) {
+      // ignore parse errors
+    }
+  }
 
   // aceptar dos formas: { combate, orden, turnoActual, hpActual } o directamente el objeto 'combate'
   const initialCombatObj = initial && (initial.combate || initial) ? (initial.combate || initial) : null;
@@ -57,27 +69,72 @@ export default function CombatView() {
   const [loading, setLoading] = useState(false);
   const [debugOpen, setDebugOpen] = useState(true);
   const [debugActors, setDebugActors] = useState(location.state?.actores || initial?.actores || []);
+  const [hydrated, setHydrated] = useState(false);
 
     // Si el WS guardó payload del combate en sessionStorage, úsalo al montar
   useEffect(() => {
     try {
-      const stored = sessionStorage.getItem(`combat_${combateId}`);
-      if (!stored) return;
-      const data = JSON.parse(stored);
-      // limpiar para no reutilizar en futuros combates
-      try { sessionStorage.removeItem(`combat_${combateId}`); } catch (e) {}
-      const incomingCombat = data.combate || data.combat || data;
-      const incomingOrden = data.orden || data.ordenIniciativa || [];
-      const incomingTurno = data.turnoActual || data.turno || null;
-      const incomingHp = data.hpActual || {};
-      if (incomingCombat) setCombate(incomingCombat);
-      if (incomingOrden && incomingOrden.length) setOrden(incomingOrden);
-      if (incomingTurno) setTurnoActual(incomingTurno);
-      if (incomingHp) setHpActual(incomingHp);
-      if (data.actores) setDebugActors(data.actores);
+      console.debug('[CombatView] mount history.state', history?.state, 'location.state', location?.state);
+    } catch (e) {}
+
+    // intento síncrono ya hecho arriba; aquí hacemos un reintento corto para cubrir carreras de eventos
+    const t = setTimeout(() => {
+      try {
+        const stored = localStorage.getItem(`combat_${combateId}`);
+        console.debug('[CombatView] recheck localStorage for', `combat_${combateId}`, stored ? '(present)' : '(null)');
+        if (!stored) {
+          setHydrated(true);
+          return;
+        }
+        const data = JSON.parse(stored);
+        const incomingCombat = data.combate || data.combat || data;
+        const incomingOrden = data.orden || data.ordenIniciativa || [];
+        const incomingTurno = data.turnoActual || data.turno || null;
+        const incomingHp = data.hpActual || {};
+        if (incomingCombat) setCombate(incomingCombat);
+        // IMPORTANT: normalizar y deduplicar la orden antes de setear
+        if (Array.isArray(incomingOrden) && incomingOrden.length) {
+          setOrden(normalizeOrden(incomingOrden));
+        }
+        if (incomingTurno) setTurnoActual(incomingTurno);
+        if (incomingHp) setHpActual(incomingHp);
+        if (data.actores) setDebugActors(data.actores);
+      } catch (e) {
+        console.debug('No session combat payload or parse error on recheck', e);
+      } finally {
+        setHydrated(true);
+      }
+    }, 400);
+    return () => clearTimeout(t);
+  }, [combateId]);
+
+  // BroadcastChannel: escuchar updates de COMBAT_STARTED para hidratar estado si llega más tarde
+  useEffect(() => {
+    let bc = null;
+    try {
+      bc = new BroadcastChannel('nn_combat_channel');
+      bc.onmessage = (ev) => {
+        try {
+          const m = ev.data || {};
+          if (m && m.type === 'COMBAT_STARTED' && String(m.combateId) === String(combateId)) {
+            console.debug('[CombatView] BC COMBAT_STARTED received for', combateId, m);
+            const payload = m.payload || m;
+            const incoming = payload.combate || payload.combat || payload;
+            const incomingOrden = payload.orden || payload.ordenIniciativa || payload.orden || [];
+            const incomingTurno = payload.turnoActual || payload.turno || null;
+            const incomingHp = payload.hpActual || {};
+            if (incoming) setCombate(incoming);
+            if (Array.isArray(incomingOrden) && incomingOrden.length) setOrden(normalizeOrden(incomingOrden));
+            if (incomingTurno) setTurnoActual(incomingTurno);
+            if (incomingHp) setHpActual(incomingHp);
+            if (payload.actores) setDebugActors(payload.actores);
+          }
+        } catch (e) { console.error('CombatView BC onmessage error', e); }
+      };
     } catch (e) {
-      console.debug('No session combat payload or parse error', e);
+      console.debug('CombatView BroadcastChannel not available', e);
     }
+    return () => { try { if (bc) bc.close(); } catch (e) {} };
   }, [combateId]);
 
   useEffect(() => {
@@ -114,6 +171,24 @@ export default function CombatView() {
         }
       }
       setParticipants(out);
+      // Asegurar hpActual para PJ: si faltan valores, inicializar con puntos de golpe máximos
+      try {
+        setHpActual((prev) => {
+          const copy = { ...(prev || {}) };
+          for (const p of out) {
+            try {
+              if (String((p || {}).tipo || '').toUpperCase() === 'PJ') {
+                const id = String(p.entidadId);
+                if (copy[id] == null) {
+                  const maxHp = p.personaje?.puntosGolpe ?? p.personaje?.hp ?? 10;
+                  copy[id] = maxHp;
+                }
+              }
+            } catch (e) { /* noop */ }
+          }
+          return copy;
+        });
+      } catch (e) { /* noop */ }
     }
 
     loadParticipants();
@@ -211,6 +286,14 @@ export default function CombatView() {
     return alivePJ ? 'victory' : 'defeat';
   };
 
+  if (!hydrated) {
+    return (
+      <div style={{ color: 'white', padding: 20 }}>
+        Cargando datos de combate...
+      </div>
+    );
+  }
+
   if (!combate && !initial) {
     return (
       <div style={{ color: 'white', padding: 20 }}>
@@ -250,7 +333,7 @@ export default function CombatView() {
                     <img src={getActorSprite(participants, turnoActual.actorId)} alt="activo" style={{ width: 160, height: 160, imageRendering: 'pixelated' }} />
                   ) : (
                     <div style={{ width: 160, height: 160, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#111', borderRadius: 8 }}>
-                      {turnoActual.actorTipo === 'EN' ? 'nombre_enemigo' : (getActorById(turnoActual.actorId)?.actor?.nombre || 'aliado')}
+            {getActorDisplayName(participants, orden, debugActors, turnoActual.actorId, turnoActual.actorTipo, combate)}
                     </div>
                   )}
                 </>
@@ -264,8 +347,15 @@ export default function CombatView() {
         {/* Right: enemigos (texto por ahora) */}
         <div style={{ width: 240, background: '#0008', padding: 8, borderRadius: 8 }}>
           <h4>Enemigos</h4>
-          {/* por ahora listamos placeholders */}
-          <div style={{ padding: 6, background: '#111', borderRadius: 6 }}>nombre_enemigo</div>
+          {/* listar enemigos desde orden / debugActors */}
+          {(orden || []).filter(o => String(o.tipo).toUpperCase() === 'EN').length === 0 ? (
+            <div style={{ padding: 6, background: '#111', borderRadius: 6 }}>ninguno</div>
+          ) : (
+            (orden || []).filter(o => String(o.tipo).toUpperCase() === 'EN').map((e) => {
+              const name = e.nombre || e.name || (Array.isArray(debugActors) && (debugActors.find(d => String(d.entidadId) === String(e.entidadId) || String(d.id) === String(e.entidadId)) || {}).nombre) || `En ${e.entidadId}`;
+              return <div key={`${e.tipo}:${e.entidadId}`} style={{ padding: 6, background: '#111', borderRadius: 6, marginBottom: 6 }}>{name}</div>;
+            })
+          )}
           {/* Debug panel toggle */}
           <div style={{ marginTop: 12 }}>
             <button onClick={() => setDebugOpen(!debugOpen)} style={{ padding: '6px 8px' }}>{debugOpen ? 'Ocultar debug' : 'Mostrar debug'}</button>

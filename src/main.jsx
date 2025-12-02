@@ -15,3 +15,25 @@ createRoot(document.getElementById('root')).render(
     </BrowserRouter>
   </AuthProvider>
 )
+
+// BroadcastChannel listener: recibir notificaciones de combate y navegar vía history (SPA)
+try {
+  const bc = new BroadcastChannel('nn_combat_channel');
+  bc.onmessage = (ev) => {
+    try {
+      const m = ev.data || {};
+      if (m && m.type === 'COMBAT_STARTED' && m.combateId) {
+        const target = `/partida/${m.partidaId}/combate/${m.combateId}`;
+        console.debug('[BC] received COMBAT_STARTED, navigating SPA to', target);
+        // usar pushState + dispatch popstate para que React Router actualice la ruta sin reload
+        try {
+          window.history.pushState({}, '', target);
+          window.dispatchEvent(new PopStateEvent('popstate'));
+        } catch (e) {
+          // fallback: reload if pushState fails
+          window.location.href = target;
+        }
+      }
+    } catch (e) { console.error('BC onmessage error', e); }
+  };
+} catch (e) { console.debug('BroadcastChannel not available', e); }
