@@ -184,23 +184,39 @@ export function usePartidaWS(partidaId, jugador, options = {}) {
           if (data?.type === 'COMBAT_STARTED') {
             try {
               const combate = data.combate || data.combat || null;
+              const startAt = data.startAt || (data.combate && data.combate.startAt) || Date.now();
               if (combate && combate.id) {
                 const targetPath = `/partida/${partidaId}/combate/${combate.id}`;
                 // siempre guardar el payload para que la vista pueda hidratarse tras navegación completa
-                  try {
-                    localStorage.setItem(`combat_${combate.id}`, JSON.stringify(data));
-                    console.debug('[WS] stored combat payload for', combate.id);
-                  } catch (e) { console.debug('[WS] failed to store combat payload', e); }
-                // Publicar por BroadcastChannel para que otras pestañas hagan la navegación vía SPA
                 try {
-                  const bc = new BroadcastChannel('nn_combat_channel');
-                  bc.postMessage({ type: 'COMBAT_STARTED', partidaId, combateId: combate.id, payload: data });
-                  bc.close();
-                  console.debug('[WS] broadcast COMBAT_STARTED for', combate.id);
-                } catch (e) {
-                  console.debug('[WS] BroadcastChannel failed, fallback to in-page event', e);
-                  try { window.dispatchEvent(new CustomEvent('combat_started_remote', { detail: data })); } catch (ee) {}
-                }
+                  localStorage.setItem(`combat_${combate.id}`, JSON.stringify(data));
+                  console.debug('[WS] stored combat payload for', combate.id);
+                } catch (e) { console.debug('[WS] failed to store combat payload', e); }
+
+                // Not using BroadcastChannel anymore. Rely on server WS broadcast
+                // and notify in-page listeners via a CustomEvent so components can hydrate.
+                try {
+                  window.dispatchEvent(new CustomEvent('combat_started_remote', { detail: data }));
+                } catch (ee) { /* noop */ }
+
+                // Programar navegación en esta pestaña según startAt para sincronizar inicio
+                try {
+                  if (window.__nn_combat_nav_timer) {
+                    clearTimeout(window.__nn_combat_nav_timer);
+                    window.__nn_combat_nav_timer = null;
+                  }
+                  const delay = Math.max(0, Number(startAt) - Date.now());
+                  window.__nn_combat_nav_timer = setTimeout(() => {
+                    try {
+                      window.history.pushState({}, '', targetPath);
+                      window.dispatchEvent(new PopStateEvent('popstate'));
+                    } catch (e) {
+                      // fallback a navegación completa
+                      window.location.href = targetPath;
+                    }
+                  }, delay);
+                  console.debug('[WS] scheduled navigation to', targetPath, 'in', delay, 'ms');
+                } catch (e) { console.debug('[WS] failed to schedule local navigation', e); }
               }
             } catch (e) {
               console.error('Error manejando COMBAT_STARTED', e);
@@ -294,6 +310,12 @@ export function usePartidaWS(partidaId, jugador, options = {}) {
 
         wsRef.current = null;
         // no hacemos setJugadores([]) aquí para no "parpadear" la UI
+        try {
+          if (window.__nn_combat_nav_timer) {
+            clearTimeout(window.__nn_combat_nav_timer);
+            window.__nn_combat_nav_timer = null;
+          }
+        } catch (ee) {}
       } catch (e) {
         console.error("Error en cleanup WS", e);
       }

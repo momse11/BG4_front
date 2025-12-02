@@ -16,24 +16,23 @@ createRoot(document.getElementById('root')).render(
   </AuthProvider>
 )
 
-// BroadcastChannel listener: recibir notificaciones de combate y navegar vía history (SPA)
+// Use server WS broadcast only; hydrate SPA when ws.js emits `combat_started_remote`.
 try {
-  const bc = new BroadcastChannel('nn_combat_channel');
-  bc.onmessage = (ev) => {
+  window.addEventListener('combat_started_remote', (ev) => {
     try {
-      const m = ev.data || {};
-      if (m && m.type === 'COMBAT_STARTED' && m.combateId) {
-        const target = `/partida/${m.partidaId}/combate/${m.combateId}`;
-        console.debug('[BC] received COMBAT_STARTED, navigating SPA to', target);
-        // usar pushState + dispatch popstate para que React Router actualice la ruta sin reload
-        try {
-          window.history.pushState({}, '', target);
-          window.dispatchEvent(new PopStateEvent('popstate'));
-        } catch (e) {
-          // fallback: reload if pushState fails
-          window.location.href = target;
-        }
+      const data = ev.detail || {};
+      const combate = data.combate || data.combat || null;
+      const partida = data.partidaId || data.partida_id || data.partida || null;
+      const startAt = data.startAt || (data.combate && data.combate.startAt) || Date.now();
+      if (combate && combate.id && partida) {
+        const target = `/partida/${partida}/combate/${combate.id}`;
+        const delay = Math.max(0, Number(startAt) - Date.now());
+        console.debug('[global] combat_started_remote received, scheduling SPA navigation to', target, 'in', delay, 'ms');
+        if (window.__nn_combat_nav_timer) { clearTimeout(window.__nn_combat_nav_timer); window.__nn_combat_nav_timer = null; }
+        window.__nn_combat_nav_timer = setTimeout(() => {
+          try { window.history.pushState({}, '', target); window.dispatchEvent(new PopStateEvent('popstate')); } catch (e) { window.location.href = target; }
+        }, delay);
       }
-    } catch (e) { console.error('BC onmessage error', e); }
-  };
-} catch (e) { console.debug('BroadcastChannel not available', e); }
+    } catch (e) { console.error('combat_started_remote handler error', e); }
+  });
+} catch (e) { /* noop */ }

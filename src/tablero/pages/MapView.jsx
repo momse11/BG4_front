@@ -416,6 +416,8 @@ export default function MapView({ partidaId, mapaId, personajesIds }) {
             localStorage.setItem(`combat_${combateObj.id}`, JSON.stringify({ combate: payloadWithOrden, actores: actoresMap }));
             console.debug('[MapView] stored combat payload', `combat_${combateObj.id}`);
           } catch (e) { console.debug('[MapView] failed to store combat payload', e); }
+          // marcar navegación a combate para que el hook WS no envie LEAVE durante el unmount
+          try { window.__nn_navigating_to_combat = true; } catch (e) {}
           navigate(`/partida/${partidaId}/combate/${combateObj.id}`, { state: { combate: payloadWithOrden, actores: actoresMap } });
           return;
         }

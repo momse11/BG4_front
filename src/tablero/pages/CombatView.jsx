@@ -108,33 +108,36 @@ export default function CombatView() {
     return () => clearTimeout(t);
   }, [combateId]);
 
-  // BroadcastChannel: escuchar updates de COMBAT_STARTED para hidratar estado si llega más tarde
+  // Escuchar evento global disparado por `ws.js` cuando llega COMBAT_STARTED
   useEffect(() => {
-    let bc = null;
+    const handler = (ev) => {
+      try {
+        const payload = ev.detail || ev || {};
+        const data = payload.payload || payload;
+        const combateObj = data.combate || data.combat || data;
+        const incomingOrden = data.orden || data.ordenIniciativa || [];
+        const incomingTurno = data.turnoActual || data.turno || null;
+        const incomingHp = data.hpActual || {};
+        const incomingCombateId = (payload.combateId || payload.combateId === 0) ? payload.combateId : (combateObj && combateObj.id ? combateObj.id : null);
+        if (!String(incomingCombateId || combateObj?.id).trim()) return;
+        if (String(incomingCombateId) !== String(combateId) && String(combateObj?.id) !== String(combateId)) return;
+        if (combateObj) setCombate(combateObj);
+        if (Array.isArray(incomingOrden) && incomingOrden.length) setOrden(normalizeOrden(incomingOrden));
+        if (incomingTurno) setTurnoActual(incomingTurno);
+        if (incomingHp) setHpActual(incomingHp);
+        if (data.actores) setDebugActors(data.actores);
+      } catch (e) {
+        console.error('combat_started_remote handler error in CombatView', e);
+      }
+    };
+
     try {
-      bc = new BroadcastChannel('nn_combat_channel');
-      bc.onmessage = (ev) => {
-        try {
-          const m = ev.data || {};
-          if (m && m.type === 'COMBAT_STARTED' && String(m.combateId) === String(combateId)) {
-            console.debug('[CombatView] BC COMBAT_STARTED received for', combateId, m);
-            const payload = m.payload || m;
-            const incoming = payload.combate || payload.combat || payload;
-            const incomingOrden = payload.orden || payload.ordenIniciativa || payload.orden || [];
-            const incomingTurno = payload.turnoActual || payload.turno || null;
-            const incomingHp = payload.hpActual || {};
-            if (incoming) setCombate(incoming);
-            if (Array.isArray(incomingOrden) && incomingOrden.length) setOrden(normalizeOrden(incomingOrden));
-            if (incomingTurno) setTurnoActual(incomingTurno);
-            if (incomingHp) setHpActual(incomingHp);
-            if (payload.actores) setDebugActors(payload.actores);
-          }
-        } catch (e) { console.error('CombatView BC onmessage error', e); }
-      };
+      window.addEventListener('combat_started_remote', handler);
     } catch (e) {
-      console.debug('CombatView BroadcastChannel not available', e);
+      console.debug('Failed to register combat_started_remote listener', e);
     }
-    return () => { try { if (bc) bc.close(); } catch (e) {} };
+
+    return () => { try { window.removeEventListener('combat_started_remote', handler); } catch (e) {} };
   }, [combateId]);
 
   useEffect(() => {
