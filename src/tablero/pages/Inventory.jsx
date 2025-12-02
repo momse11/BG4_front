@@ -171,6 +171,10 @@ export default function Inventory({
   const [isActionLoading, setIsActionLoading] = useState(false);
   const [actionError, setActionError] = useState(null);
 
+  // Info del objeto que se está hovereando (inventario o equipamiento)
+  // kind = "inv" | "arma" | "armadura"
+  const [hoverInfo, setHoverInfo] = useState(null);
+
   // =========================
   //   CARGAR PERSONAJE REAL + POLLING mientras el inventario esté abierto
   // =========================
@@ -179,7 +183,6 @@ export default function Inventory({
     let intervalId = null;
 
     if (!personajeId || !isOpen) {
-      // si se cierra, no seguimos pegándole al backend
       return () => {
         cancelled = true;
         if (intervalId) clearInterval(intervalId);
@@ -335,6 +338,10 @@ export default function Inventory({
     icon: findTipoIcon(pa.label),
   }));
 
+  // ORO del personaje
+  const oroCantidad = pjSource.oro ?? pjSource.Oro ?? 0;
+  const oroIcon = findTipoIcon("Oro");
+
   // EQUIP arma / armadura
   const armaEquip =
     Array.isArray(pjSource.equipArma) && pjSource.equipArma.length > 0
@@ -371,50 +378,62 @@ export default function Inventory({
         ? personajeFull.inventario
         : items) || [];
 
-    return sourceItems.map((o, idx) => {
-      const rawTipo = String(o.tipo || "").toLowerCase();
-      let categoria = "tesoros";
+    return sourceItems
+      .map((o, idx) => {
+        const tipoRaw = String(o.tipo || "").trim();
 
-      if (rawTipo === "arma") {
-        categoria = "armas";
-      } else if (
-        rawTipo === "armadura" ||
-        rawTipo === "casco" ||
-        rawTipo === "capa" ||
-        rawTipo === "guantes" ||
-        rawTipo === "botas" ||
-        rawTipo === "escudo" ||
-        rawTipo === "amuleto"
-      ) {
-        categoria = "armadura";
-      } else if (rawTipo === "pocion" || rawTipo === "poción") {
-        categoria = "pociones";
-      } else if (rawTipo === "suministro" || rawTipo === "comida") {
-        categoria = "comida";
-      }
+        // Categorías estrictas según tipo
+        // "Arma"       -> armas
+        // "Armadura"   -> armadura
+        // "Poción"     -> pociones
+        // "Suministro" -> comida
+        // "Recurso"    -> tesoros
+        let categoria = null;
 
-      const icon = findObjetoIcon(o.nombre);
+        switch (tipoRaw) {
+          case "Arma":
+            categoria = "armas";
+            break;
+          case "Armadura":
+            categoria = "armadura";
+            break;
+          case "Pocion":
+            categoria = "pociones";
+            break;
+          case "Suministro":
+            categoria = "comida";
+            break;
+          case "Recurso":
+            categoria = "tesoros";
+            break;
+          default:
+            // cualquier otro tipo NO se muestra en el inventario
+            return null;
+        }
 
-      return {
-        id: o.id ?? idx,
-        backendId: o.id ?? o.nombre ?? null,
-        nombre: o.nombre || "Sin nombre",
-        categoria,
-        icon,
-        tipo: o.tipo || "",
-        descripcion: o.descripcion || "",
-        danio: o.Danio || null,
-        tipoDanio: o.TipoDanio || null,
-        defensaFisica: o.defensaFisica ?? 0,
-        defensaMagica: o.defensaMagica ?? 0,
-        precioOro: o.precioOro ?? 0,
-        armaTipo: o.armaTipo ?? o.ArmaTipo ?? null,
-        armaduraTipo: o.armaduraTipo ?? o.ArmaduraTipo ?? null,
-        instrumentoTipo: o.instrumentoTipo ?? o.InstrumentoTipo ?? null,
-        escudoTipo: o.escudoTipo ?? o.EscudoTipo ?? null,
-        amuletoTipo: o.amuletoTipo ?? o.AmuletoTipo ?? null,
-      };
-    });
+        const icon = findObjetoIcon(o.nombre);
+
+        return {
+          id: o.id ?? idx,
+          backendId: o.id ?? o.nombre ?? null,
+          nombre: o.nombre || "Sin nombre",
+          categoria,
+          icon,
+          tipo: o.tipo || "",
+          descripcion: o.descripcion || "",
+          danio: o.Danio || null,
+          tipoDanio: o.TipoDanio || null,
+          defensaFisica: o.defensaFisica ?? 0,
+          defensaMagica: o.defensaMagica ?? 0,
+          precioOro: o.precioOro ?? 0,
+          armaTipo: o.armaTipo ?? o.ArmaTipo ?? null,
+          armaduraTipo: o.armaduraTipo ?? o.ArmaduraTipo ?? null,
+          instrumentoTipo: o.instrumentoTipo ?? o.InstrumentoTipo ?? null,
+          escudoTipo: o.escudoTipo ?? o.EscudoTipo ?? null,
+          amuletoTipo: o.amuletoTipo ?? o.AmuletoTipo ?? null,
+        };
+      })
+      .filter(Boolean);
   }, [personajeFull, items]);
 
   const filteredItems = useMemo(
@@ -544,9 +563,11 @@ export default function Inventory({
         setSelectedItem(null);
         setActionMode("default");
         setActionError(null);
+        setHoverInfo(null);
         return;
       }
       onClose();
+      setHoverInfo(null);
     }
   };
 
@@ -676,6 +697,212 @@ export default function Inventory({
   );
 
   // =========================
+  //   RENDER DETALLES ABAJO
+  // =========================
+  const renderHoverDetails = () => {
+    if (!hoverInfo || !hoverInfo.item) {
+      return (
+        <div className="inventory-details-empty">
+          Pasa el cursor sobre un objeto para ver sus detalles.
+        </div>
+      );
+    }
+
+    const { kind, item } = hoverInfo;
+
+    if (kind === "inv") {
+      const tipoLower = String(item.tipo || "").toLowerCase();
+      const isArma = tipoLower === "arma";
+      const isArmadura = tipoLower === "armadura";
+      const isPocion =
+        tipoLower === "poción" || tipoLower === "pocion";
+      const isSuministro = tipoLower === "suministro";
+      const isRecurso = tipoLower === "recurso";
+
+      const danoIcon = item.tipoDanio
+        ? findTipoIcon(item.tipoDanio)
+        : null;
+
+      return (
+        <div className="inventory-details-content">
+          <div className="inventory-tooltip-name">{item.nombre}</div>
+
+          {item.descripcion && (
+            <div className="inventory-tooltip-desc">
+              {item.descripcion}
+            </div>
+          )}
+
+          {isArma && (
+            <>
+              <div className="inventory-tooltip-row">
+                <span className="inventory-tooltip-label">Tipo:</span>
+                <span className="inventory-tooltip-value">
+                  Arma {item.armaTipo || ""}
+                </span>
+              </div>
+              <div className="inventory-tooltip-row">
+                <span className="inventory-tooltip-label">Daño:</span>
+                <span className="inventory-tooltip-value">
+                  {item.danio || "-"}
+                </span>
+              </div>
+              <div className="inventory-tooltip-row">
+                <span className="inventory-tooltip-label">
+                  Tipo de daño:
+                </span>
+                <span className="inventory-tooltip-value inventory-tooltip-damage">
+                  {danoIcon && (
+                    <img
+                      className="inventory-tooltip-damage-icon"
+                      src={danoIcon}
+                      alt={item.tipoDanio}
+                    />
+                  )}
+                  {item.tipoDanio || "-"}
+                </span>
+              </div>
+            </>
+          )}
+
+          {isArmadura && (
+            <>
+              <div className="inventory-tooltip-row">
+                <span className="inventory-tooltip-label">Tipo:</span>
+                <span className="inventory-tooltip-value">
+                  Armadura {item.armaduraTipo || ""}
+                </span>
+              </div>
+              <div className="inventory-tooltip-row">
+                <span className="inventory-tooltip-label">
+                  Def. física:
+                </span>
+                <span className="inventory-tooltip-value">
+                  {item.defensaFisica ?? 0}
+                </span>
+              </div>
+              <div className="inventory-tooltip-row">
+                <span className="inventory-tooltip-label">
+                  Def. mágica:
+                </span>
+                <span className="inventory-tooltip-value">
+                  {item.defensaMagica ?? 0}
+                </span>
+              </div>
+            </>
+          )}
+
+          {(isPocion || isSuministro || isRecurso) &&
+            !item.descripcion && (
+              <div className="inventory-tooltip-desc">
+                Sin descripción.
+              </div>
+            )}
+
+          <div className="inventory-tooltip-row">
+            <span className="inventory-tooltip-label">Precio:</span>
+            <span className="inventory-tooltip-value">
+              {item.precioOro ?? 0} oro
+            </span>
+          </div>
+        </div>
+      );
+    }
+
+    if (kind === "arma") {
+      const arma = item;
+      const danoIcon = arma.TipoDanio
+        ? findTipoIcon(arma.TipoDanio)
+        : null;
+
+      return (
+        <div className="inventory-details-content">
+          <div className="inventory-tooltip-name">{arma.nombre}</div>
+
+          {arma.descripcion && (
+            <div className="inventory-tooltip-desc">
+              {arma.descripcion}
+            </div>
+          )}
+
+          <div className="inventory-tooltip-row">
+            <span className="inventory-tooltip-label">Daño:</span>
+            <span className="inventory-tooltip-value">
+              {arma.Danio || "-"}
+            </span>
+          </div>
+          <div className="inventory-tooltip-row">
+            <span className="inventory-tooltip-label">
+              Tipo de daño:
+            </span>
+            <span className="inventory-tooltip-value inventory-tooltip-damage">
+              {danoIcon && (
+                <img
+                  className="inventory-tooltip-damage-icon"
+                  src={danoIcon}
+                  alt={arma.TipoDanio}
+                />
+              )}
+              {arma.TipoDanio || "-"}
+            </span>
+          </div>
+
+          <div className="inventory-tooltip-row">
+            <span className="inventory-tooltip-label">Precio:</span>
+            <span className="inventory-tooltip-value">
+              {arma.precioOro ?? 0} oro
+            </span>
+          </div>
+        </div>
+      );
+    }
+
+    if (kind === "armadura") {
+      const armadura = item;
+
+      return (
+        <div className="inventory-details-content">
+          <div className="inventory-tooltip-name">
+            {armadura.nombre}
+          </div>
+
+          {armadura.descripcion && (
+            <div className="inventory-tooltip-desc">
+              {armadura.descripcion}
+            </div>
+          )}
+
+          <div className="inventory-tooltip-row">
+            <span className="inventory-tooltip-label">
+              Def. física:
+            </span>
+            <span className="inventory-tooltip-value">
+              {armadura.defensaFisica ?? 0}
+            </span>
+          </div>
+          <div className="inventory-tooltip-row">
+            <span className="inventory-tooltip-label">
+              Def. mágica:
+            </span>
+            <span className="inventory-tooltip-value">
+              {armadura.defensaMagica ?? 0}
+            </span>
+          </div>
+
+          <div className="inventory-tooltip-row">
+            <span className="inventory-tooltip-label">Precio:</span>
+            <span className="inventory-tooltip-value">
+              {armadura.precioOro ?? 0} oro
+            </span>
+          </div>
+        </div>
+      );
+    }
+
+    return null;
+  };
+
+  // =========================
   //   RENDER
   // =========================
   return (
@@ -690,7 +917,7 @@ export default function Inventory({
         aria-modal="true"
         onMouseDown={handleModalMouseDown}
       >
-        {/* Backdrop interno para cerrar el menú al click fuera */}
+        {/* Backdrop interno para cerrar el menú de acciones */}
         {selectedItem && (
           <div
             className="inventory-actions-backdrop"
@@ -698,6 +925,7 @@ export default function Inventory({
               setSelectedItem(null);
               setActionMode("default");
               setActionError(null);
+              setHoverInfo(null);
             }}
           />
         )}
@@ -787,109 +1015,68 @@ export default function Inventory({
                   <div className="inventory-equip-panel">
                     <div className="inventory-equip-slots">
                       {/* Arma equipada */}
-                      <div className="inventory-equip-slot">
+                      <div
+                        className="inventory-equip-slot"
+                        onMouseEnter={() =>
+                          armaEquip &&
+                          setHoverInfo({ kind: "arma", item: armaEquip })
+                        }
+                        onMouseLeave={() => setHoverInfo(null)}
+                      >
                         {armaIcon && (
-                          <>
-                            <div className="inventory-slot-icon">
-                              <img
-                                src={armaIcon}
-                                alt={armaEquip?.nombre || "Arma equipada"}
-                              />
-                            </div>
-
-                            {armaEquip && (
-                              <div className="inventory-tooltip">
-                                <div className="inventory-tooltip-name">
-                                  {armaEquip.nombre}
-                                </div>
-
-                                {armaEquip.descripcion && (
-                                  <div className="inventory-tooltip-desc">
-                                    {armaEquip.descripcion}
-                                  </div>
-                                )}
-
-                                <div className="inventory-tooltip-row">
-                                  <span className="inventory-tooltip-label">
-                                    Daño:
-                                  </span>
-                                  <span className="inventory-tooltip-value">
-                                    {armaEquip.Danio || "-"}
-                                  </span>
-                                </div>
-
-                                <div className="inventory-tooltip-row">
-                                  <span className="inventory-tooltip-label">
-                                    Tipo de daño:
-                                  </span>
-                                  <span className="inventory-tooltip-value">
-                                    {armaEquip.TipoDanio || "-"}
-                                  </span>
-                                </div>
-
-                                <div className="inventory-tooltip-price">
-                                  {(armaEquip.precioOro ?? 0)} oro
-                                </div>
-                              </div>
-                            )}
-                          </>
+                          <div className="inventory-slot-icon">
+                            <img
+                              src={armaIcon}
+                              alt={armaEquip?.nombre || "Arma equipada"}
+                            />
+                          </div>
                         )}
                       </div>
 
                       {/* Armadura equipada */}
-                      <div className="inventory-equip-slot">
+                      <div
+                        className="inventory-equip-slot"
+                        onMouseEnter={() =>
+                          armaduraEquip &&
+                          setHoverInfo({
+                            kind: "armadura",
+                            item: armaduraEquip,
+                          })
+                        }
+                        onMouseLeave={() => setHoverInfo(null)}
+                      >
                         {armaduraIcon && (
-                          <>
-                            <div className="inventory-slot-icon">
-                              <img
-                                src={armaduraIcon}
-                                alt={
-                                  armaduraEquip?.nombre || "Armadura equipada"
-                                }
-                              />
-                            </div>
-
-                            {armaduraEquip && (
-                              <div className="inventory-tooltip">
-                                <div className="inventory-tooltip-name">
-                                  {armaduraEquip.nombre}
-                                </div>
-
-                                {armaduraEquip.descripcion && (
-                                  <div className="inventory-tooltip-desc">
-                                    {armaduraEquip.descripcion}
-                                  </div>
-                                )}
-
-                                <div className="inventory-tooltip-row">
-                                  <span className="inventory-tooltip-label">
-                                    Def. física:
-                                  </span>
-                                  <span className="inventory-tooltip-value">
-                                    {armaduraEquip.defensaFisica ?? 0}
-                                  </span>
-                                </div>
-
-                                <div className="inventory-tooltip-row">
-                                  <span className="inventory-tooltip-label">
-                                    Def. mágica:
-                                  </span>
-                                  <span className="inventory-tooltip-value">
-                                    {armaduraEquip.defensaMagica ?? 0}
-                                  </span>
-                                </div>
-
-                                <div className="inventory-tooltip-price">
-                                  {(armaduraEquip.precioOro ?? 0)} oro
-                                </div>
-                              </div>
-                            )}
-                          </>
+                          <div className="inventory-slot-icon">
+                            <img
+                              src={armaduraIcon}
+                              alt={
+                                armaduraEquip?.nombre || "Armadura equipada"
+                              }
+                            />
+                          </div>
                         )}
                       </div>
                     </div>
 
                     <div className="inventory-equip-resources">
+                      {/* ORO */}
+                      <div className="inventory-res-line">
+                        {oroIcon && (
+                          <img
+                            className="inventory-resource-icon"
+                            src={oroIcon}
+                            alt="Oro"
+                          />
+                        )}
+                        <div className="inventory-resource-text">
+                          <div className="inventory-resource-count">
+                            ${oroCantidad}
+                          </div>
+                          <div className="inventory-resource-label">Oro</div>
+                        </div>
+                      </div>
+
+                      {/* Recurso principal */}
                       {recursoNombre && (
                         <div className="inventory-res-line">
                           {recursoIcon && (
@@ -910,6 +1097,7 @@ export default function Inventory({
                         </div>
                       )}
 
+                      {/* Puntos de acción */}
                       {puntosAccion.map((pa) => (
                         <div key={pa.nivelKey} className="inventory-res-line">
                           {pa.icon && (
@@ -1042,7 +1230,7 @@ export default function Inventory({
               </div>
             </div>
 
-            {/* parte inferior: filtros + contenedor objetos */}
+            {/* parte inferior: filtros + contenedor objetos + panel detalle */}
             <div className="inventory-right-bottom">
               <div className="inventory-filters">
                 {FILTERS.map((f) => {
@@ -1077,18 +1265,6 @@ export default function Inventory({
                     </div>
                   )}
                   {filteredItems.map((item) => {
-                    const tipoLower = String(item.tipo || "").toLowerCase();
-                    const isArma = tipoLower === "arma";
-                    const isArmadura = tipoLower === "armadura";
-                    const isPocion =
-                      tipoLower === "pocion" || tipoLower === "poción";
-                    const isSuministro = tipoLower === "suministro";
-                    const isRecurso = tipoLower === "recurso";
-
-                    const danoIcon = item.tipoDanio
-                      ? findTipoIcon(item.tipoDanio)
-                      : null;
-
                     const isSelected =
                       selectedItem && selectedItem.id === item.id;
 
@@ -1103,6 +1279,10 @@ export default function Inventory({
                         data-type={item.categoria}
                         title={item.nombre}
                         onClick={(e) => handleItemClick(item, e)}
+                        onMouseEnter={() =>
+                          setHoverInfo({ kind: "inv", item })
+                        }
+                        onMouseLeave={() => setHoverInfo(null)}
                       >
                         {item.icon && (
                           <div className="inventory-slot-icon">
@@ -1110,81 +1290,7 @@ export default function Inventory({
                           </div>
                         )}
 
-                        {/* Tooltip */}
-                        <div className="inventory-tooltip">
-                          <div className="inventory-tooltip-name">
-                            {item.nombre}
-                          </div>
-
-                          {item.descripcion && (
-                            <div className="inventory-tooltip-desc">
-                              {item.descripcion}
-                            </div>
-                          )}
-
-                          {isArma && (
-                            <>
-                              <div className="inventory-tooltip-row">
-                                <span className="inventory-tooltip-label">
-                                  Daño:
-                                </span>
-                                <span className="inventory-tooltip-value">
-                                  {item.danio || "-"}
-                                </span>
-                              </div>
-                              <div className="inventory-tooltip-row">
-                                <span className="inventory-tooltip-label">
-                                  Tipo de daño:
-                                </span>
-                                <span className="inventory-tooltip-value inventory-tooltip-damage">
-                                  {danoIcon && (
-                                    <img
-                                      className="inventory-tooltip-damage-icon"
-                                      src={danoIcon}
-                                      alt={item.tipoDanio}
-                                    />
-                                  )}
-                                  {item.tipoDanio || "-"}
-                                </span>
-                              </div>
-                            </>
-                          )}
-
-                          {isArmadura && (
-                            <>
-                              <div className="inventory-tooltip-row">
-                                <span className="inventory-tooltip-label">
-                                  Def. física:
-                                </span>
-                                <span className="inventory-tooltip-value">
-                                  {item.defensaFisica ?? 0}
-                                </span>
-                              </div>
-                              <div className="inventory-tooltip-row">
-                                <span className="inventory-tooltip-label">
-                                  Def. mágica:
-                                </span>
-                                <span className="inventory-tooltip-value">
-                                  {item.defensaMagica ?? 0}
-                                </span>
-                              </div>
-                            </>
-                          )}
-
-                          {(isPocion || isSuministro || isRecurso) &&
-                            !item.descripcion && (
-                              <div className="inventory-tooltip-desc">
-                                Sin descripción.
-                              </div>
-                            )}
-
-                          {/* Precio en oro para todos */}
-                          <div className="inventory-tooltip-price">
-                            {item.precioOro ?? 0} oro
-                          </div>
-                        </div>
-
-                        {/* Pop-up de acciones a la derecha del item */}
+                        {/* Pop-up de acciones (por encima de otros slots) */}
                         {isSelected && (
                           <div
                             className="inventory-item-actions-card inventory-item-actions-card--inline"
@@ -1261,6 +1367,11 @@ export default function Inventory({
                     );
                   })}
                 </div>
+              </div>
+
+              {/* Panel inferior de detalles */}
+              <div className="inventory-details-panel">
+                {renderHoverDetails()}
               </div>
             </div>
           </section>

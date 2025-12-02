@@ -1,5 +1,11 @@
 @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
 
+/* Bloquea scroll horizontal global */
+html,
+body {
+  overflow-x: hidden;
+}
+
 /* ─────────────────────────────
    OVERLAY / MODAL
 ───────────────────────────── */
@@ -31,7 +37,7 @@
   max-width: 900px;
   width: 100%;
   max-height: 85vh;
-  overflow: hidden;
+  overflow: visible;
   box-sizing: border-box;
   font-family: 'Press Start 2P', system-ui, sans-serif;
   font-size: 0.6rem;
@@ -345,7 +351,7 @@
   font-size: 0.45rem;
 }
 
-/* parte inferior: filtros + contenedor objetos */
+/* parte inferior: filtros + contenedor objetos + panel de detalles */
 .inventory-right-bottom {
   display: flex;
   flex-direction: column;
@@ -400,17 +406,45 @@
   border: 3px solid #4A6931;
   box-shadow: 0 3px 0 #0A0F00;
   background-color: #0A0F00;
-  height: 400px;
-  overflow-y: auto;
+  height: 260px;          /* más corto para dejar espacio al panel de detalles */
+  overflow-y: auto;       /* solo scroll vertical */
+  overflow-x: hidden;     /* sin scroll horizontal */
+  max-width: 100%;
   box-sizing: border-box;
+}
+
+/* Scrollbar estilo pixel-art */
+.inventory-grid-wrapper::-webkit-scrollbar {
+  width: 8px;
+}
+
+.inventory-grid-wrapper::-webkit-scrollbar-track {
+  background: #0A0F00;
+}
+
+.inventory-grid-wrapper::-webkit-scrollbar-thumb {
+  background: #4A6931;
+  border: 2px solid #0A0F00;
+  box-shadow: 0 0 0 1px #C0A66C;
+}
+
+.inventory-grid-wrapper::-webkit-scrollbar-thumb:hover {
+  background: #C0A66C;
+}
+
+.inventory-grid-wrapper {
+  scrollbar-width: thin;
+  scrollbar-color: #4A6931 #0A0F00;
 }
 
 .inventory-grid {
   padding: 8px;
   display: grid;
-  grid-template-columns: repeat(auto-fill, 60px);
+  /* Máximo 5 objetos por fila, márgenes iguales en todas direcciones */
+  grid-template-columns: repeat(5, 60px);
   gap: 6px;
-  justify-content: flex-start;
+  justify-content: center;
+  align-content: flex-start;
   min-height: 100%;
 }
 
@@ -423,6 +457,7 @@
 /* slots */
 .inventory-slot {
   position: relative;
+  z-index: 1;
   width: 60px;
   height: 60px;
   border: 2px solid #C0A66C;
@@ -436,6 +471,10 @@
   border-radius: 0;
   overflow: visible;
   font-family: 'Press Start 2P', system-ui, sans-serif;
+}
+
+.inventory-slot--selected {
+  z-index: 10; /* el slot seleccionado y su menú por encima del resto */
 }
 
 .inventory-slot-icon {
@@ -452,48 +491,34 @@
   image-rendering: pixelated;
 }
 
-/* ───────────── Tooltip ───────────── */
+/* ───────────── Panel de detalles fijo abajo ───────────── */
 
-.inventory-tooltip {
-  position: absolute;
-  top: 50%;
-  left: 100%;
-  transform: translateY(-50%);
-  margin-left: 6px;
+.inventory-details-panel {
+  margin-top: 8px;
+  border: 3px solid #4A6931;   /* borde verde */
+  box-shadow: 0 3px 0 #0A0F00;
   background-color: #0A0F00;
-  border: 2px solid #C0A66C;
-  padding: 6px 8px;
-  width: 220px;
+  min-height: 130px;           /* espacio suficiente para info larga */
+  padding: 8px 10px;
   box-sizing: border-box;
-  font-size: 0.45rem;
-  color: #F8E9D0;
-  z-index: 900;
-  pointer-events: none;
-  opacity: 0;
-  visibility: hidden;
-  transition: opacity 0.15s ease-out, visibility 0.15s ease-out;
-  font-family: 'Press Start 2P', system-ui, sans-serif;
+  font-size: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
 }
 
-.inventory-tooltip * {
-  font-family: 'Press Start 2P', system-ui, sans-serif;
+.inventory-details-empty {
+  font-size: 0.5rem;
+  color: #C0A66C;
 }
 
-.inventory-slot:hover .inventory-tooltip {
-  opacity: 1;
-  visibility: visible;
+.inventory-details-content {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
-/* tooltip visible mientras el item está seleccionado */
-.inventory-slot--selected .inventory-tooltip {
-  opacity: 1;
-  visibility: visible;
-}
-
-.inventory-equip-slot:hover .inventory-tooltip {
-  opacity: 1;
-  visibility: visible;
-}
+/* Tipografía interna reutilizada del antiguo tooltip */
 
 .inventory-tooltip-name {
   color: #4A6931;
@@ -549,7 +574,7 @@
   min-width: 140px;
   max-width: 180px;
   font-size: 0.45rem;
-  z-index: 1100;
+  z-index: 20; /* sobre demás slots dentro del grid */
   font-family: 'Press Start 2P', system-ui, sans-serif;
 }
 
