@@ -100,10 +100,23 @@
   image-rendering: pixelated;
 }
 
+/* Mensaje de interacción (objetos / enemigos) encima del banner de turno */
+.map-interaction-banner {
+  position: absolute;
+  top: 6px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 3px 8px;
+  font-size: 10px;
+  text-align: center;
+  color: #F0D26A; /* amarillo */
+  text-shadow: 0 0 4px #0A0F00;
+}
+
 /* Banner de texto de turno sobre el mapa */
 .map-turn-banner {
   position: absolute;
-  top: 10px;
+  top: 26px; /* un poco más debajo del mensaje amarillo */
   left: 50%;
   transform: translateX(-50%);
   background: #0A0F00;
@@ -113,20 +126,31 @@
   text-align: center;
 }
 
-/* Nombre del mapa (abajo) */
+/* Nombre del mapa (debajo de la imagen) */
 .map-name {
-  margin-bottom: 10px;
+  margin-top: 10px;
+  margin-bottom: 8px;
   font-size: 18px;
   color: #F8E9D0;
+  text-align: center;
 }
 
+/* Fila de botones debajo del nombre del mapa */
+.map-actions {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;           /* pequeña separación entre los 4 botones */
+  margin-bottom: 16px;
+}
+
+/* Estilo base de los botones tipo “pixel” */
 .map-abandon-button {
   font-family: 'Press Start 2P', system-ui, sans-serif;
-  /* 🔽 cambio clave: ancho automático, no full width */
-  width: auto;
+  width: auto;                       /* ancho automático */
   padding: 0.9rem 1rem;
-  background-color: #4A6931;   
-  color: #0A0F00;            
+  background-color: #4A6931;
+  color: #0A0F00;
   border: 3px solid #C0A66C;
   text-transform: uppercase;
   letter-spacing: 1px;
@@ -138,11 +162,22 @@
   box-sizing: border-box;
 }
 
-.map-abandon-button:hover {
+/* Clase por si luego quieres diferenciar estilos de estos botones */
+.map-action-button {
   background-color: #C0A66C;
 }
 
-.map-abandon-button:active {
+/* Hover / active sólo cuando el botón no está deshabilitado */
+.map-abandon-button:hover:not(:disabled) {
+  background-color: #C0A66C;
+}
+
+.map-abandon-button:active:not(:disabled) {
   transform: translateY(2px);
   box-shadow: 0 2px 0 #0A0F00;
+}
+
+.map-abandon-button:disabled {
+  opacity: 0.4;
+  cursor: default;
 }

@@ -87,6 +87,32 @@ export default function MapView({ partidaId, mapaId, personajesIds }) {
   // 🔐 Inventario solo para el dueño del personaje (tecla I)
   const [showInventory, setShowInventory] = useState(false);
 
+  // 💬 Mensaje de interacción (visible para TODOS ahora)
+  const [interactionMessage, setInteractionMessage] = useState(null);
+
+  // ====== MAPEO AUXILIAR (nombre → sprite, jugador, etc) ======
+  const spriteById = new Map();
+  const jugadoresByNombre = {};
+  const jugadorById = new Map();
+  const jugadorByPersonajeId = {};
+
+  for (const j of jugadores || []) {
+    try {
+      jugadorById.set(String(j.id), j);
+      const sel = j.selected_personaje || null;
+      if (sel && sel.nombre) {
+        jugadoresByNombre[String(sel.nombre).toLowerCase()] = sel;
+      }
+
+      const pjId =
+        (sel && sel.id) || j.selected_personaje_id || j.selected_personaje_db_id;
+      if (pjId != null) {
+        jugadorByPersonajeId[String(pjId)] = j;
+      }
+    } catch (e) {}
+  }
+
+  // 🎹 Toggle inventario con tecla I
   useEffect(() => {
     const handleKeyDown = (event) => {
       if (event.key === "i" || event.key === "I") {
@@ -99,34 +125,167 @@ export default function MapView({ partidaId, mapaId, personajesIds }) {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [mySelectedPersonajeNumericId]);
 
+  // 🧨 Escuchamos los movimientos vía evento global para sincronizar el mensaje entre TODOS
+  useEffect(() => {
+    // helper: dado un personajeId, encontrar al jugador dueño
+    const findOwnerByPersonajeId = (pjId) => {
+      if (pjId == null) return null;
+      const target = String(pjId);
+
+      return (
+        (jugadores || []).find((j) => {
+          const sel = j.selected_personaje || null;
+          const ids = [
+            j.selected_personaje_db_id,
+            j.selected_personaje_id,
+            sel?.id,
+          ]
+            .filter((x) => x != null)
+            .map((x) => String(x));
+          return ids.includes(target);
+        }) || null
+      );
+    };
+
+    const handler = (event) => {
+      const data = event.detail || {};
+      console.debug("[MapView] jugada_moved recibido:", data);
+
+      const evtPartidaId =
+        data.partidaId || data.partida_id || data.partida || null;
+      if (
+        evtPartidaId != null &&
+        String(evtPartidaId) !== String(partidaId)
+      ) {
+        return;
+      }
+
+      const payload = data.jugada || data;
+
+      const destX =
+        payload.x ??
+        payload.destX ??
+        payload.nueva_x ??
+        payload.pos_x ??
+        null;
+      const destY =
+        payload.y ??
+        payload.destY ??
+        payload.nueva_y ??
+        payload.pos_y ??
+        null;
+
+      const personajeIdFromPayload =
+        payload.personajeId ??
+        payload.personaje_id ??
+        payload.actor_id ??
+        null;
+
+      const jugadorId =
+        payload.jugadorId ??
+        payload.jugador_id ??
+        payload.usuarioId ??
+        payload.usuario_id ??
+        null;
+
+      if (destX == null || destY == null) return;
+
+      const casilla = casillas.find(
+        (c) => Number(c.x) === Number(destX) && Number(c.y) === Number(destY)
+      );
+      if (!casilla) {
+        setInteractionMessage(null);
+        return;
+      }
+
+      const objetosInCasilla = Array.isArray(casilla.objetos)
+        ? casilla.objetos
+        : [];
+      const enemigosInCasilla = Array.isArray(casilla.enemigos)
+        ? casilla.enemigos
+        : [];
+
+      const getNombreEnemigo = (e) => {
+        if (!e) return "";
+        if (typeof e === "string") return e;
+        if (e.nombre) return e.nombre;
+        if (e.enemigo && e.enemigo.nombre) return e.enemigo.nombre;
+        if (e.enemy && e.enemy.nombre) return e.enemy.nombre;
+        return "";
+      };
+
+      const getNombreObjeto = (o) => {
+        if (!o) return "";
+        if (typeof o === "string") return o;
+        if (o.nombre) return o.nombre;
+        if (o.objeto && o.objeto.nombre) return o.objeto.nombre;
+        if (o.item && o.item.nombre) return o.item.nombre;
+        return "";
+      };
+
+      // 💡 Personaje que se mueve: priorizamos el turnoActivo
+      const movingPersonajeId =
+        turnoActivo?.personajeId != null
+          ? turnoActivo.personajeId
+          : personajeIdFromPayload;
+
+      // Buscamos dueño
+      let owner = null;
+
+      if (movingPersonajeId != null) {
+        owner = findOwnerByPersonajeId(movingPersonajeId);
+      }
+
+      // Fallback: si viene jugadorId en el payload, tratamos de usarlo
+      if (!owner && jugadorId != null) {
+        owner =
+          (jugadores || []).find(
+            (j) => Number(j.id) === Number(jugadorId)
+          ) || null;
+      }
+
+      const actorName =
+        owner?.username ||
+        (movingPersonajeId != null
+          ? `Personaje ${movingPersonajeId}`
+          : "Un aventurero");
+
+      let msg = null;
+
+      if (enemigosInCasilla.length > 0) {
+        const nombresEnemigos = enemigosInCasilla
+          .map(getNombreEnemigo)
+          .filter(Boolean)
+          .join(", ");
+        if (nombresEnemigos) {
+          msg = `${actorName} ha detonado un combate con ${nombresEnemigos}.`;
+        }
+      } else if (objetosInCasilla.length > 0) {
+        const nombresObjetos = objetosInCasilla
+          .map(getNombreObjeto)
+          .filter(Boolean)
+          .join(", ");
+        if (nombresObjetos) {
+          msg = `${actorName} ha encontrado ${nombresObjetos}.`;
+        }
+      }
+
+      if (msg) setInteractionMessage(msg);
+      else setInteractionMessage(null);
+    };
+
+    window.addEventListener("jugada_moved", handler);
+    return () => window.removeEventListener("jugada_moved", handler);
+  }, [casillas, jugadores, partidaId, turnoActivo]);
+
+  // ⚠️ Returns condicionales después de TODOS los hooks
   if (loading) return <div className="map-status-text">Cargando...</div>;
   if (!mapa) return <div className="map-status-text">Error cargando mapa</div>;
 
   const fondoMapa = getFondo(mapa.nombre);
 
-  // ====== MAPEO JUGADOR ↔ PERSONAJE ======
+  // ====== SPRITES PARTY ======
 
-  const spriteById = new Map();
-  const jugadoresByNombre = {};
-  const jugadorByPersonajeId = {};
-  const jugadorById = new Map();
-
-  for (const j of jugadores || []) {
-    try {
-      jugadorById.set(String(j.id), j);
-      const sel = j.selected_personaje || null;
-      if (sel && sel.nombre) {
-        jugadoresByNombre[String(sel.nombre).toLowerCase()] = sel;
-      }
-      const pjId =
-        (sel && sel.id) || j.selected_personaje_id || j.selected_personaje_db_id;
-      if (pjId != null) {
-        jugadorByPersonajeId[String(pjId)] = j;
-      }
-    } catch (e) {}
-  }
-
-  // Sprites del party
   const spritesOtros = [];
   const spritesActivos = [];
   for (const o of sortedOrder) {
@@ -267,6 +426,19 @@ export default function MapView({ partidaId, mapaId, personajesIds }) {
   const canMove =
     !!mySelectedPersonajeNumericId && myTurnActive && movimientosRestantes > 0;
 
+  // 🔍 Casilla actual de MI personaje
+  const myCurrentCasilla =
+    myJugada &&
+    casillas.find(
+      (c) =>
+        Number(c.x) === Number(myJugada.x) &&
+        Number(c.y) === Number(myJugada.y)
+    );
+
+  const tipoMyCasilla = String(myCurrentCasilla?.tipo || "").toLowerCase();
+  const canRestHere = tipoMyCasilla === "descanso";
+  const canTradeHere = tipoMyCasilla === "acceso";
+
   const allowedTiles = new Set();
   if (canMove && myJugada) {
     const curX = Number(myJugada.x);
@@ -325,6 +497,7 @@ export default function MapView({ partidaId, mapaId, personajesIds }) {
         }
       } catch (e) {}
 
+      // El mensaje aparecerá para TODOS cuando llegue el evento JUGADA_MOVIDA desde el WS
       await moveTo(mySelectedPersonajeNumericId, c.x, c.y);
     } catch (e) {
       console.error("Error moviendo a casilla", e);
@@ -332,19 +505,22 @@ export default function MapView({ partidaId, mapaId, personajesIds }) {
     }
   };
 
-  // 🔁 Dueño del personaje activo para el banner
+  // 🔁 Datos del personaje activo (turno actual)
+  const activeSlot =
+    activePersonajeIdStr &&
+    sortedOrder.find((o) => String(o.actor?.id) === activePersonajeIdStr);
+
   let activeOwner = null;
   if (activePersonajeIdStr) {
-    const activeSlot = sortedOrder.find(
-      (o) => String(o.actor?.id) === activePersonajeIdStr
-    );
     if (activeSlot?.actor?.usuarioId != null) {
       activeOwner =
         jugadorById.get(String(activeSlot.actor.usuarioId)) || null;
-    } else {
-      activeOwner = jugadorByPersonajeId[activePersonajeIdStr] || null;
+    } else if (activeSlot?.actor?.id != null) {
+      activeOwner =
+        jugadorByPersonajeId[String(activeSlot.actor.id)] || null;
     }
   }
+  const activeActor = activeSlot?.actor || null;
 
   const nombreJugadorTurno = turnoActivo
     ? activeOwner?.username ||
@@ -356,7 +532,7 @@ export default function MapView({ partidaId, mapaId, personajesIds }) {
     ? `Es el turno de ${nombreJugadorTurno}, le quedan ${movimientosRestantes} movimientos...`
     : "Esperando próximo turno...";
 
-  // 🧍 Personaje del usuario actual (snapshot WS, se usa como fallback)
+  // 🧍 Personaje del usuario actual
   const myPersonaje =
     (mySlot && mySlot.selected_personaje) ||
     sortedOrder.find(
@@ -436,21 +612,41 @@ export default function MapView({ partidaId, mapaId, personajesIds }) {
     }
   };
 
+  // === Handlers de los botones ===
+  const handleDescansarClick = () => {
+    if (!canRestHere) return;
+    console.debug("[MapView] Descansar clicado en casilla de descanso");
+  };
+
+  const handleInventoryButtonClick = () => {
+    if (!mySelectedPersonajeNumericId) return;
+    setShowInventory(true);
+  };
+
+  const handleComerciarClick = () => {
+    if (!canTradeHere) return;
+    navigate("trading");
+  };
+
   return (
     <div className="map-root">
       {/* HEADER de retratos */}
       <div className="map-header">
         {sortedOrder.map((slot, i) => {
           const pjId = slot.actor?.id;
+
           // 🔗 Dueño del personaje para este retrato
-          let owner =
-            (slot.actor?.usuarioId != null
-              ? jugadorById.get(String(slot.actor.usuarioId))
-              : null) ||
-            jugadorByPersonajeId[String(pjId)] ||
-            null;
+          let owner = null;
+
+          if (slot.actor?.usuarioId != null) {
+            owner = jugadorById.get(String(slot.actor.usuarioId)) || null;
+          }
+          if (!owner && pjId != null) {
+            owner = jugadorByPersonajeId[String(pjId)] || null;
+          }
 
           const username = owner?.username || "—";
+
           const isActive =
             activePersonajeIdStr &&
             String(pjId) === String(activePersonajeIdStr);
@@ -483,9 +679,7 @@ export default function MapView({ partidaId, mapaId, personajesIds }) {
 
       {/* MAPA + GRID */}
       <div className="map-main">
-        {fondoMapa && (
-          <img src={fondoMapa} className="map-background" />
-        )}
+        {fondoMapa && <img src={fondoMapa} className="map-background" />}
 
         <Grid
           casillas={casillas}
@@ -497,17 +691,46 @@ export default function MapView({ partidaId, mapaId, personajesIds }) {
           allowedTiles={allowedTiles}
         />
 
+        {/* Mensaje amarillo de interacción */}
+        {interactionMessage && (
+          <div className="map-interaction-banner">{interactionMessage}</div>
+        )}
+
         <div className="map-turn-banner">{textoTurno}</div>
       </div>
 
+      {/* Nombre del mapa */}
       <div className="map-name">{mapa.nombre}</div>
 
-      <button
-        onClick={handleAbandonar}
-        className="map-abandon-button"
-      >
-        Abandonar partida
-      </button>
+      {/* Botones */}
+      <div className="map-actions">
+        <button
+          className="map-abandon-button map-action-button"
+          onClick={handleDescansarClick}
+          disabled={!canRestHere}
+        >
+          Descansar
+        </button>
+        <button
+          className="map-abandon-button map-action-button"
+          onClick={handleInventoryButtonClick}
+        >
+          Inventario
+        </button>
+        <button
+          className="map-abandon-button map-action-button"
+          onClick={handleComerciarClick}
+          disabled={!canTradeHere}
+        >
+          Comerciar
+        </button>
+        <button
+          className="map-abandon-button map-action-button"
+          onClick={handleAbandonar}
+        >
+          Abandonar
+        </button>
+      </div>
 
       <Inventory
         personaje={myPersonaje}
@@ -516,7 +739,7 @@ export default function MapView({ partidaId, mapaId, personajesIds }) {
         items={myPersonaje?.inventario || []}
         isOpen={showInventory}
         onClose={() => setShowInventory(false)}
-        teamMembers={teamMembers} 
+        teamMembers={teamMembers}
       />
     </div>
   );
