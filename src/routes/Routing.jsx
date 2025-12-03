@@ -17,23 +17,24 @@ import CombatView from '../tablero/pages/CombatView';
 export default function Routing() {
   const navigate = useNavigate();
 
-  // Listener global para navegación a combate desde WebSocket
-  useEffect(() => {
-    const handleNavigateToCombat = (event) => {
-      try {
-        const { path, combateId, partidaId, data } = event.detail || {};
-        if (path) {
-          console.log('[Routing] Navegando a combate:', path);
-          navigate(path, { state: data });
-        }
-      } catch (e) {
-        console.error('[Routing] Error navegando a combate:', e);
-      }
-    };
-
-    window.addEventListener('navigate_to_combat', handleNavigateToCombat);
-    return () => window.removeEventListener('navigate_to_combat', handleNavigateToCombat);
-  }, [navigate]);
+  // DESACTIVADO: Ahora el combate se muestra como overlay, no como navegación
+  // El evento 'show_combat_overlay' es manejado directamente por MapView
+  // useEffect(() => {
+  //   const handleNavigateToCombat = (event) => {
+  //     try {
+  //       const { path, combateId, partidaId, data } = event.detail || {};
+  //       if (path) {
+  //         console.log('[Routing] Navegando a combate:', path);
+  //         navigate(path, { state: data });
+  //       }
+  //     } catch (e) {
+  //       console.error('[Routing] Error navegando a combate:', e);
+  //     }
+  //   };
+  //
+  //   window.addEventListener('navigate_to_combat', handleNavigateToCombat);
+  //   return () => window.removeEventListener('navigate_to_combat', handleNavigateToCombat);
+  // }, [navigate]);
 
   return (
       <Routes>
@@ -77,7 +78,7 @@ export default function Routing() {
           }
         />
 
-        {/* MAPA — Vista del tablero */}
+        {/* MAPA — Vista del tablero (incluye combate como overlay) */}
         <Route
           path="/partida/:partidaId/mapa/:mapaId"
           element={
@@ -87,17 +88,7 @@ export default function Routing() {
           }
         />
 
-        {/* Combate */}
-        <Route
-          path="/partida/:partidaId/combate/:combateId"
-          element={
-            <ProtectedRoute>
-              <React.Suspense fallback={<div style={{ color: 'white' }}>Cargando combate...</div>}>
-                <CombatView />
-              </React.Suspense>
-            </ProtectedRoute>
-          }
-        />
+        {/* REMOVIDO: Combate ahora es solo overlay dentro del mapa */}
 
       </Routes>
   );

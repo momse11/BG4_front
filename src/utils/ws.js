@@ -209,7 +209,8 @@ export function usePartidaWS(partidaId, jugador, options = {}) {
                   window.dispatchEvent(new CustomEvent('combat_started_remote', { detail: data }));
                 } catch (ee) { /* noop */ }
 
-                // Programar navegación en esta pestaña según startAt para sincronizar inicio
+                // NUEVO: Emitir evento para overlay de combate en lugar de navegar
+                // MapView escuchará este evento y mostrará el combate como overlay
                 try {
                   if (window.__nn_combat_nav_timer) {
                     clearTimeout(window.__nn_combat_nav_timer);
@@ -218,17 +219,17 @@ export function usePartidaWS(partidaId, jugador, options = {}) {
                   const delay = Math.max(0, Number(startAt) - Date.now());
                   window.__nn_combat_nav_timer = setTimeout(() => {
                     try {
-                      // Emitir evento para navegación SPA
-                      window.dispatchEvent(new CustomEvent('navigate_to_combat', { 
-                        detail: { path: targetPath, combateId: combate.id, partidaId, data }
+                      // Emitir evento para mostrar combate como overlay (NO navegación)
+                      window.dispatchEvent(new CustomEvent('show_combat_overlay', { 
+                        detail: { combateId: combate.id, partidaId, combate: data.combate, actores: data.actores, orden: data.orden, turnoActual: data.turnoActual, hpActual: data.hpActual }
                       }));
-                      console.debug('[WS] emitted navigate_to_combat event for', targetPath);
+                      console.debug('[WS] emitted show_combat_overlay event for combate', combate.id);
                     } catch (e) {
-                      console.error('[WS] failed to emit navigate event', e);
+                      console.error('[WS] failed to emit overlay event', e);
                     }
                   }, delay);
-                  console.debug('[WS] scheduled navigation to', targetPath, 'in', delay, 'ms');
-                } catch (e) { console.debug('[WS] failed to schedule local navigation', e); }
+                  console.debug('[WS] scheduled combat overlay in', delay, 'ms');
+                } catch (e) { console.debug('[WS] failed to schedule combat overlay', e); }
               }
             } catch (e) {
               console.error('Error manejando COMBAT_STARTED', e);

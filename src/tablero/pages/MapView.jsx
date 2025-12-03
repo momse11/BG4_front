@@ -6,6 +6,7 @@ import { AuthContext } from "../../auth/AuthProvider";
 import { usePartidaWS } from "../../utils/ws";
 import api, { deletePartida } from "../../utils/api";
 import Inventory from "./Inventory";
+import CombatView from "./CombatView";
 import "../../assets/styles/map.css";
 import { useNavigate } from 'react-router-dom';
 
@@ -27,6 +28,7 @@ function getFondo(name) {
 export default function MapView({ partidaId, mapaId, personajesIds }) {
   const { user } = useContext(AuthContext);
   const navigate = useNavigate();
+  const [combateActivo, setCombateActivo] = useState(null); // { combateId, combate, actores }
 
   const jugadorParam = useMemo(
     () => (user ? { id: user.id, username: user.username } : null),
@@ -86,6 +88,30 @@ export default function MapView({ partidaId, mapaId, personajesIds }) {
 
   // 🔐 Inventario solo para el dueño del personaje (tecla I)
   const [showInventory, setShowInventory] = useState(false);
+
+  // Escuchar evento de WebSocket para mostrar combate como overlay
+  useEffect(() => {
+    const handleShowCombat = (event) => {
+      const { combateId, combate, actores, orden, turnoActual, hpActual } = event.detail || {};
+      if (combateId && combate) {
+        console.log('[MapView] Recibido evento show_combat_overlay:', combateId);
+        const combatePayload = {
+          ...combate,
+          orden: orden || combate.ordenIniciativa || [],
+          turnoActual,
+          hpActual: hpActual || {}
+        };
+        setCombateActivo({
+          combateId,
+          combate: combatePayload,
+          actores: actores || []
+        });
+      }
+    };
+    
+    window.addEventListener('show_combat_overlay', handleShowCombat);
+    return () => window.removeEventListener('show_combat_overlay', handleShowCombat);
+  }, []);
 
   useEffect(() => {
     const handleKeyDown = (event) => {
@@ -411,19 +437,17 @@ export default function MapView({ partidaId, mapaId, personajesIds }) {
           })();
           // attach normalized orden into payload copy
           const payloadWithOrden = { ...(combatePayload || {}), orden: normalizedOrden };
-          // Guardar en sessionStorage para proteger contra recargas completas (p.ej. WS navigation)
-          try {
-            localStorage.setItem(`combat_${combateObj.id}`, JSON.stringify({ combate: payloadWithOrden, actores: actoresMap }));
-            console.debug('[MapView] stored combat payload', `combat_${combateObj.id}`);
-          } catch (e) { console.debug('[MapView] failed to store combat payload', e); }
-          // marcar navegación a combate para que el hook WS no envie LEAVE durante el unmount
-          try { window.__nn_navigating_to_combat = true; } catch (e) {}
-          navigate(`/partida/${partidaId}/combate/${combateObj.id}`, { state: { combate: payloadWithOrden, actores: actoresMap } });
+          // Mostrar combate como overlay en lugar de navegar
+          setCombateActivo({
+            combateId: combateObj.id,
+            combate: payloadWithOrden,
+            actores: actoresMap
+          });
           return;
         }
       }
-      // por defecto recargar para reflejar posición
-      window.location.reload();
+      // Recargar solo si NO es combate (para actualizar posición)
+      // REMOVIDO: window.location.reload() - causa problemas con WebSocket
     } catch (e) {
       console.error("Error moviendo a casilla", e);
       alert(e?.response?.data?.error || "Error moviendo personaje");
@@ -652,11 +676,12 @@ export default function MapView({ partidaId, mapaId, personajesIds }) {
                           }, []).filter(Boolean)
                         : [];
                       const payloadWithOrden = { ...(combatePayload || {}), orden: normalizedOrden };
-                      try {
-                        localStorage.setItem(`combat_${combatePayload.id}`, JSON.stringify({ combate: payloadWithOrden, actores: actoresMap }));
-                        console.debug('[MapView] stored combat payload', `combat_${combatePayload.id}`);
-                      } catch (e) { console.debug('[MapView] failed to store combat payload', e); }
-                      navigate(`/partida/${partidaId}/combate/${combatePayload.id}`, { state: { combate: payloadWithOrden, actores: actoresMap } });
+                      // Mostrar combate como overlay
+                      setCombateActivo({
+                        combateId: combatePayload.id,
+                        combate: payloadWithOrden,
+                        actores: actoresMap
+                      });
                       return;
                     }
                     alert('Combate iniciado, pero no se devolvió id (ver consola)');
@@ -690,6 +715,29 @@ export default function MapView({ partidaId, mapaId, personajesIds }) {
         onClose={() => setShowInventory(false)}
         teamMembers={teamMembers} 
       />
+
+      {/* Overlay de combate */}
+      {combateActivo && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.95)',
+          zIndex: 9999,
+          overflow: 'auto'
+        }}>
+          <CombatView
+            partidaId={partidaId}
+            combateId={combateActivo.combateId}
+            initialCombate={combateActivo.combate}
+            initialActores={combateActivo.actores}
+            jugadores={jugadores}
+            onClose={() => setCombateActivo(null)}
+          />
+        </div>
+      )}
     </div>
   );
 }
