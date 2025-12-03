@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useLocation, useParams, useNavigate } from 'react-router-dom';
 import api from '../../utils/api';
+import useCombateWS from '../hooks/useCombateWS';
 
 // Normaliza y elimina duplicados en una lista de actores
 function normalizeOrden(list = []) {
@@ -82,6 +83,47 @@ export default function CombatView() {
   const [debugOpen, setDebugOpen] = useState(true);
   const [debugActors, setDebugActors] = useState(location.state?.actores || initial?.actores || []);
   const [hydrated, setHydrated] = useState(false);
+
+  // Escuchar eventos de combate vía WebSocket
+  useCombateWS(partidaId, (event) => {
+    try {
+      console.debug('[CombatView] WS event:', event.type, event);
+      
+      if (event.type === 'COMBAT_TURN_CHANGED' && String(event.combateId) === String(combateId)) {
+        // Actualizar turno actual y HP cuando cambia el turno
+        if (event.turnoActual || event.turno) {
+          setTurnoActual(event.turnoActual || event.turno);
+        }
+        if (event.hpActual) {
+          setHpActual(event.hpActual);
+        }
+        console.log('[CombatView] Turno cambiado:', event.turnoActual || event.turno);
+      }
+      
+      if (event.type === 'COMBAT_ACTION' && String(event.combateId) === String(combateId)) {
+        // Actualizar HP cuando hay una acción (especialmente ataques de IA)
+        if (event.result?.hp) {
+          setHpActual((prev) => ({
+            ...prev,
+            [event.result.hp.objetivo]: event.result.hp.despues,
+          }));
+        }
+        console.log('[CombatView] Acción de combate:', event.isAI ? 'IA' : 'Jugador', event.result);
+      }
+      
+      if (event.type === 'COMBAT_ENDED' && String(event.combateId) === String(combateId)) {
+        // Navegar a victoria/derrota
+        const resultado = event.resultado || 'victoria';
+        if (resultado === 'victoria') {
+          navigate(`/partida/${partidaId}/victory`, { state: { combateId } });
+        } else {
+          navigate(`/partida/${partidaId}/defeat`, { state: { combateId } });
+        }
+      }
+    } catch (e) {
+      console.error('[CombatView] Error procesando evento WS:', e);
+    }
+  });
 
     // Si el WS guardó payload del combate en sessionStorage, úsalo al montar
   useEffect(() => {

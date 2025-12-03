@@ -1,5 +1,8 @@
 import { useEffect, useState, useRef } from "react";
 
+// Almacenamiento global de WebSockets por partidaId para reutilizar entre componentes
+const globalWSConnections = new Map();
+
 export function usePartidaWS(partidaId, jugador, options = {}) {
   const { onPartidaDeleted, onPartidaStarted } = options;
 
@@ -9,6 +12,7 @@ export function usePartidaWS(partidaId, jugador, options = {}) {
     movimientos_restantes: 0,
   });
   const wsRef = useRef(null);
+  const isOwner = useRef(false); // track si este hook es el "dueño" de la conexión
 
   useEffect(() => {
     // solo conectamos si hay partida y jugador válido
@@ -27,18 +31,24 @@ export function usePartidaWS(partidaId, jugador, options = {}) {
     const connect = () => {
       if (!shouldReconnect) return;
 
-      // evitar duplicar sockets
-      if (
-        wsRef.current &&
-        (wsRef.current.readyState === WebSocket.OPEN ||
-          wsRef.current.readyState === WebSocket.CONNECTING)
-      ) {
-        ws = wsRef.current;
+      // Intentar reutilizar conexión global existente
+      const existingWS = globalWSConnections.get(partidaId);
+      if (existingWS && 
+          (existingWS.readyState === WebSocket.OPEN || 
+           existingWS.readyState === WebSocket.CONNECTING)) {
+        console.log('[usePartidaWS] Reutilizando WebSocket existente para partida', partidaId);
+        ws = existingWS;
+        wsRef.current = ws;
+        isOwner.current = false; // No somos dueños de esta conexión
         return;
       }
 
+      // Crear nueva conexión
+      console.log('[usePartidaWS] Creando nuevo WebSocket para partida', partidaId);
       ws = new WebSocket("ws://localhost:3000/ws");
       wsRef.current = ws;
+      globalWSConnections.set(partidaId, ws);
+      isOwner.current = true; // Somos dueños de esta conexión
 
       ws.onopen = () => {
         console.log("Conectado a WS");
@@ -208,11 +218,13 @@ export function usePartidaWS(partidaId, jugador, options = {}) {
                   const delay = Math.max(0, Number(startAt) - Date.now());
                   window.__nn_combat_nav_timer = setTimeout(() => {
                     try {
-                      // Usar navegación completa para asegurar que React Router recargue la ruta
-                      // Esto garantiza que CombatView se monte correctamente con todos los datos
-                      window.location.href = targetPath;
+                      // Emitir evento para navegación SPA
+                      window.dispatchEvent(new CustomEvent('navigate_to_combat', { 
+                        detail: { path: targetPath, combateId: combate.id, partidaId, data }
+                      }));
+                      console.debug('[WS] emitted navigate_to_combat event for', targetPath);
                     } catch (e) {
-                      console.error('[WS] failed to navigate to combat', e);
+                      console.error('[WS] failed to emit navigate event', e);
                     }
                   }, delay);
                   console.debug('[WS] scheduled navigation to', targetPath, 'in', delay, 'ms');
@@ -229,7 +241,7 @@ export function usePartidaWS(partidaId, jugador, options = {}) {
       };
 
       ws.onclose = (ev) => {
-        console.log("WS cerrado", ev && ev.reason ? ev.reason : "");
+        console.debug("[usePartidaWS] WS cerrado", ev && ev.code ? `(code: ${ev.code})` : "", ev && ev.reason ? ev.reason : "");
         if (!shouldReconnect) {
           // nos fuimos del lobby / componente desmontado → no reconectar
           return;
@@ -260,27 +272,19 @@ export function usePartidaWS(partidaId, jugador, options = {}) {
 
     const cleanup = () => {
       try {
-        shouldReconnect = false; // importante: NO volver a conectar
+        shouldReconnect = false;
 
         if (reconnectTimer) {
           clearTimeout(reconnectTimer);
           reconnectTimer = null;
         }
 
-        if (
-          wsRef.current &&
-          wsRef.current.readyState === WebSocket.OPEN
-        ) {
-          // Evitar enviar LEAVE si la navegación resultó en la ruta de combate
-          // (pushState + popstate vía BroadcastChannel). Esto evita que el servidor
-          // piense que el jugador salió temporalmente al navegar dentro de la SPA.
-          let skipLeave = false;
-          try {
-            const path = window && window.location && window.location.pathname ? String(window.location.pathname) : '';
-            if (path.includes('/combate/')) skipLeave = true;
-          } catch (e) {}
-
-          if (!skipLeave) {
+        // Solo cerrar el WebSocket si somos los "dueños" de la conexión
+        // Si otro componente está reutilizando la conexión, no la cerramos
+        if (isOwner.current && wsRef.current) {
+          console.debug('[usePartidaWS] cleanup: cerrando WebSocket (owner)');
+          
+          if (wsRef.current.readyState === WebSocket.OPEN) {
             try {
               wsRef.current.send(
                 JSON.stringify({
@@ -292,23 +296,24 @@ export function usePartidaWS(partidaId, jugador, options = {}) {
             } catch (e) {
               console.debug("Error enviando LEAVE por WS", e);
             }
-          } else {
-            console.debug('[usePartidaWS] skipping LEAVE because navigation target is combat');
-          }
 
-          try {
-            wsRef.current.close();
-          } catch (e) {}
-        } else if (
-          wsRef.current &&
-          wsRef.current.readyState === WebSocket.CONNECTING
-        ) {
-          try {
-            wsRef.current.close();
-          } catch (e) {}
+            try {
+              wsRef.current.close();
+            } catch (e) {}
+          } else if (wsRef.current.readyState === WebSocket.CONNECTING) {
+            try {
+              wsRef.current.close();
+            } catch (e) {}
+          }
+          
+          // Remover de conexiones globales
+          globalWSConnections.delete(partidaId);
+        } else {
+          console.debug('[usePartidaWS] cleanup: manteniendo WebSocket (not owner)');
         }
 
         wsRef.current = null;
+        isOwner.current = false;
         // no hacemos setJugadores([]) aquí para no "parpadear" la UI
         try {
           if (window.__nn_combat_nav_timer) {

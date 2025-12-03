@@ -8,14 +8,20 @@ import { AuthContext } from '../../auth/AuthProvider';
 // - onEvent: callback(event) cuando llega un evento de tipo COMBAT_*
 export default function useCombateWS(partidaId, onEvent, options = {}) {
   const { user } = useContext(AuthContext);
-  const { sendMessage, messages, connected } = useWebSocket();
+  const ws = useWebSocket();
   const { onPartidaDeleted } = options;
   const lastIndex = useRef(0);
+  
+  // Valores por defecto si el contexto no está disponible
+  const sendMessage = ws?.sendMessage || (() => {});
+  const messages = ws?.messages || [];
+  const connected = ws?.connected || false;
 
   useEffect(() => {
-    if (!connected || !partidaId || !user) return;
+    if (!connected || !partidaId || !user || !sendMessage) return;
     // enviar JOIN para unir este socket a la partida
     try {
+      console.debug('[useCombateWS] Enviando JOIN para partida', partidaId);
       sendMessage({ type: 'JOIN', partidaId, jugador: { id: user.id, username: user.username } });
     } catch (e) {
       console.debug('useCombateWS: no se pudo enviar JOIN', e?.message || e);

@@ -1,5 +1,5 @@
-import React from 'react';
-import { Routes, Route } from 'react-router-dom';
+import React, { useEffect } from 'react';
+import { Routes, Route, useNavigate } from 'react-router-dom';
 import Landing from '../landing/Landing-Page';
 import LandingPublic from '../landing/LandingPublic';
 import Login from '../auth/Login';
@@ -15,6 +15,26 @@ import MapViewWrapper from '../tablero/pages/MapViewWrapper';
 import CombatView from '../tablero/pages/CombatView';
 
 export default function Routing() {
+  const navigate = useNavigate();
+
+  // Listener global para navegación a combate desde WebSocket
+  useEffect(() => {
+    const handleNavigateToCombat = (event) => {
+      try {
+        const { path, combateId, partidaId, data } = event.detail || {};
+        if (path) {
+          console.log('[Routing] Navegando a combate:', path);
+          navigate(path, { state: data });
+        }
+      } catch (e) {
+        console.error('[Routing] Error navegando a combate:', e);
+      }
+    };
+
+    window.addEventListener('navigate_to_combat', handleNavigateToCombat);
+    return () => window.removeEventListener('navigate_to_combat', handleNavigateToCombat);
+  }, [navigate]);
+
   return (
       <Routes>
 
