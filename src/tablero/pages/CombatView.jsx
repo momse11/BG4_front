@@ -53,9 +53,9 @@ export default function CombatView({
   // 🔥 Usar jugadores de props (vienen de MapView que tiene el WebSocket activo)
   const jugadores = jugadoresProp || [];
   
-  // 🔥 Debug: Log cuando cambian los jugadores
+  // Debug: Log cuando cambian los jugadores
   useEffect(() => {
-    console.log('[CombatView] 🔄 jugadores desde props:', jugadores?.length, jugadores?.map(j => ({ id: j.id, personaje_db_id: j.selected_personaje_db_id })));
+    console.log('[CombatView] 🔄 jugadores desde props:', jugadores?.length);
   }, [jugadores]);
   
   // Inicializar estado desde props (initialCombate siempre viene del overlay)
@@ -113,10 +113,12 @@ export default function CombatView({
         if (data.type === 'COMBAT_ACTION' && String(data.combateId) === String(combateId)) {
           // Actualizar HP cuando hay una acción (la estructura es data.hp, no data.result.hp)
           if (data.hp && data.hp.objetivo != null && data.hp.despues != null) {
-            console.log('[CombatView] 💥 Actualizando HP:', data.hp.objetivo, '→', data.hp.despues);
+            // 🔥 Construir clave usando "tipo:id" desde objetivoTipo
+            const hpKey = `${data.hp.objetivoTipo || 'PJ'}:${data.hp.objetivo}`;
+            console.log('[CombatView] 💥 Actualizando HP:', hpKey, '→', data.hp.despues);
             setHpActual((prev) => ({
               ...prev,
-              [data.hp.objetivo]: data.hp.despues,
+              [hpKey]: data.hp.despues,
             }));
           }
           console.log('[CombatView] Acción de combate:', data.isAI ? 'IA' : 'Jugador', data);
@@ -131,8 +133,32 @@ export default function CombatView({
         }
         
         if (data.type === 'COMBAT_ENDED' && String(data.combateId) === String(combateId)) {
-          // Cerrar overlay
-          if (onClose) onClose();
+          console.log('[CombatView] 🏆 Combate finalizado:', data);
+          
+          // Mostrar recompensas si hay victoria
+          if (data.resultado === 'victoria' && data.recompensas) {
+            const { oroTotal, experienciaTotal, porJugador } = data.recompensas;
+            const miRecompensa = porJugador?.[myPersonajeId];
+            
+            if (miRecompensa) {
+              console.log('[CombatView] 🎉 Recompensas recibidas:', miRecompensa);
+              
+              // Mostrar notificación de recompensas (puedes personalizar esto)
+              const mensaje = `¡Victoria! Recompensas: +${miRecompensa.oroGanado} oro, +${miRecompensa.experienciaGanada} XP`;
+              alert(mensaje); // TODO: Reemplazar con notificación bonita
+            }
+            
+            console.log('[CombatView] 💰 Recompensas totales del combate:', {
+              oro: oroTotal,
+              experiencia: experienciaTotal,
+              jugadores: Object.keys(porJugador).length
+            });
+          }
+          
+          // Cerrar overlay después de mostrar recompensas
+          setTimeout(() => {
+            if (onClose) onClose();
+          }, 3000); // Esperar 3 segundos antes de cerrar
         }
       } catch (e) {
         console.error('[CombatView] Error procesando combat_message:', e);
@@ -166,14 +192,26 @@ export default function CombatView({
         try {
           const tipo = String(item.tipo || '').toUpperCase();
           if (tipo === 'PJ') {
-            const r = await api.get(`/personaje/${item.entidadId}`);
-            const pj = r.data.personaje || r.data || null;
-            out.push({ ...item, personaje: pj });
+            // 🔥 Cargar datos completos del personaje de la DB para inventario/acciones
+            try {
+              const r = await api.get(`/personaje/${item.entidadId}`);
+              const pj = r.data.personaje || r.data || null;
+              out.push({ ...item, personaje: pj });
+            } catch (e) {
+              console.warn('[loadParticipants] Error cargando PJ', item.entidadId, e);
+              out.push({ ...item, personaje: { nombre: item.nombre } });
+            }
           } else {
             // EN: intentar obtener nombre desde debugActors (actores resueltos enviados por backend)
             let nombre = item.nombre || null;
             if (!nombre && Array.isArray(debugActors)) {
-              const found = debugActors.find(a => String(a.entidadId) === String(item.entidadId) || String(a.id) === String(item.entidadId));
+              console.log('[loadParticipants] 🔍 Buscando enemigo EN:', item.entidadId, 'en debugActors:', debugActors);
+              // 🔥 Filtrar por tipo Y entidadId para evitar confusión entre PJ:1 y EN:1
+              const found = debugActors.find(a => 
+                String(a.tipo || '').toUpperCase() === 'EN' && 
+                (String(a.entidadId) === String(item.entidadId) || String(a.id) === String(item.entidadId))
+              );
+              console.log('[loadParticipants] ✅ Enemigo encontrado:', found);
               if (found) nombre = found.nombre || found.name || null;
             }
             out.push({ ...item, personaje: nombre ? { nombre } : null });
@@ -184,18 +222,19 @@ export default function CombatView({
         }
       }
       setParticipants(out);
-      // Asegurar hpActual para PJ: si faltan valores, inicializar con puntos de golpe máximos
+      // Asegurar hpActual para todos: si faltan valores, inicializar con puntos de golpe máximos
       try {
         setHpActual((prev) => {
           const copy = { ...(prev || {}) };
           for (const p of out) {
             try {
-              if (String((p || {}).tipo || '').toUpperCase() === 'PJ') {
-                const id = String(p.entidadId);
-                if (copy[id] == null) {
-                  const maxHp = p.personaje?.puntosGolpe ?? p.personaje?.hp ?? 10;
-                  copy[id] = maxHp;
-                }
+              // 🔥 Usar formato "tipo:id" para claves de HP
+              const tipo = String((p || {}).tipo || '').toUpperCase();
+              const hpKey = `${tipo}:${p.entidadId}`;
+              
+              if (copy[hpKey] == null) {
+                const maxHp = p.personaje?.puntosGolpe ?? p.personaje?.hp ?? 10;
+                copy[hpKey] = maxHp;
               }
             } catch (e) { /* noop */ }
           }
@@ -212,128 +251,47 @@ export default function CombatView({
     if (location.state?.actores) setDebugActors(location.state.actores);
   }, [location.state]);
 
-  // 🔥 Identificar mi personaje usando los datos del WebSocket (jugadores) o debugActors
+  // 🔥 Identificar mi personaje usando los datos del WebSocket (jugadores)
   useEffect(() => {
-    console.log('[CombatView] useEffect resolver personaje - user:', user?.id, 'jugadores:', jugadores?.length, 'orden:', orden?.length, 'debugActors:', debugActors?.length);
-    
-    if (!user || !orden || orden.length === 0) {
-      console.warn('[CombatView] Falta user o orden para resolver personaje');
+    if (!user || !orden || orden.length === 0 || !jugadores || jugadores.length === 0) {
+      console.warn('[CombatView] Falta user, orden o jugadores para resolver personaje');
       return;
     }
     
-    let resolvedPersonajeId = null;
-    let mySlot = null;
+    // 🔥 Buscar mi usuario en la lista de jugadores
+    const myJugador = jugadores.find(j => Number(j.id) === Number(user.id));
     
-    // MÉTODO 1: Usar WebSocket jugadores si está disponible
-    if (jugadores && jugadores.length > 0) {
-      mySlot = jugadores.find(j => Number(j.id) === Number(user.id));
-      
-      if (mySlot) {
-        console.log('[CombatView] 🔍 mySlot desde WS:', JSON.stringify(mySlot));
-        
-        if (mySlot.selected_personaje_db_id) {
-          resolvedPersonajeId = mySlot.selected_personaje_db_id;
-          console.log('[CombatView] ✅ Personaje desde jugadores WS (db_id):', resolvedPersonajeId);
-        }
-      }
-    }
-    
-    // MÉTODO 2: Si no hay WS jugadores, intentar match por posición en orden
-    // Los personajes se crean en el mismo orden que aparecen en la partida
-    // Necesitamos obtener "mi personaje" de alguna forma sin WS
-    if (!resolvedPersonajeId && (!jugadores || jugadores.length === 0)) {
-      // Estrategia alternativa: Buscar en orden el primer PJ que coincida con el turno actual si soy yo
-      // O simplemente esperar a que lleguen los jugadores (debería ser < 1 segundo)
-      console.warn('[CombatView] 🕐 Esperando jugadores del WebSocket... (debugActors:', debugActors?.length, ')');
-      
-      // TEMPORAL: Si tenemos debugActors, buscar por input.entidadId
-      // debugActors tiene: { input: { tipo, entidadId }, tipo, entidadId, nombre }
-      // El input.entidadId es el personaje original que matchea con Usuario.selected_personaje_id
-      if (debugActors && debugActors.length > 0) {
-        console.log('[CombatView] 🔍 Intentando match con debugActors:', debugActors);
-        console.log('[CombatView] 🔍 Mi user.id:', user.id);
-        
-        // Buscar el actor cuyo input.entidadId matchea con algún patrón conocido
-        // Por ahora, usar orden basado en entidadId (menor = primer usuario)
-        const pjActors = debugActors.filter(a => a.tipo === 'PJ').sort((a, b) => {
-          // Ordenar por el ID del personaje original (input.entidadId)
-          const aInput = a.input?.entidadId || a.entidadId;
-          const bInput = b.input?.entidadId || b.entidadId;
-          return aInput - bInput;
-        });
-        
-        console.log('[CombatView] 🔍 PJ Actors ordenados:', pjActors.map(a => ({ 
-          entidadId: a.entidadId, 
-          inputId: a.input?.entidadId, 
-          nombre: a.nombre 
-        })));
-        
-        // Buscar el mínimo user.id en la partida y calcular offset
-        // Si los users son [5, 6, 7, 8], el offset es 5
-        // Entonces user 5 → índice 0, user 6 → índice 1, etc.
-        const userIndex = user.id - Math.min(...[user.id]); // Por ahora asumir que es secuencial
-        
-        // Mejor: usar el índice directo asumiendo que debugActors está en el orden correcto
-        if (pjActors.length > 0) {
-          // Simplemente tomar el actor que corresponda al orden
-          // Como no sabemos el mapeo exacto, usamos una heurística: el primer PJ en orden es el primer usuario
-          // Esto es temporal hasta que el backend incluya userId en actoresResueltos
-          
-          // Por ahora, encontrar cuál de los pjActors tiene entidadId que matchea con un patrón
-          // Dado que user.id = 5 y personajes son 11-14, podemos intentar encontrar por nombre
-          // O simplemente usar el primer PJ disponible como el del usuario actual
-          
-          // HACK TEMPORAL: Asumir que el primer actor en orden es el que tiene el turno
-          // y si user.id matchea con algún patrón, usar ese
-          resolvedPersonajeId = pjActors[0]?.entidadId; // Placeholder
-          console.log('[CombatView] 🔶 TEMPORAL: Usando primer PJ como fallback:', resolvedPersonajeId);
-          
-          // Mejor: No adivinar, simplemente esperar a que lleguen los jugadores
-          resolvedPersonajeId = null;
-        }
-      }
-      
-      if (!resolvedPersonajeId) {
-        return; // Esperar próximo render cuando lleguen jugadores
-      }
-    }
-    
-    // MÉTODO 3: Buscar por nombre en debugActors
-    if (!resolvedPersonajeId && mySlot?.selected_personaje?.nombre && debugActors && debugActors.length > 0) {
-      const actorMatch = debugActors.find(a => 
-        a.tipo === 'PJ' && 
-        a.nombre?.toLowerCase() === mySlot.selected_personaje.nombre.toLowerCase()
-      );
-      
-      if (actorMatch?.entidadId) {
-        resolvedPersonajeId = actorMatch.entidadId;
-        console.log('[CombatView] ✅ Personaje desde debugActors (por nombre):', resolvedPersonajeId);
-      }
-    }
-    
-    // MÉTODO 4: Buscar directamente en orden por nombre
-    if (!resolvedPersonajeId && mySlot?.selected_personaje?.nombre) {
-      const pjEnOrden = orden.find(o => 
-        o.tipo === 'PJ' && 
-        o.nombre?.toLowerCase() === mySlot.selected_personaje.nombre.toLowerCase()
-      );
-      
-      if (pjEnOrden?.entidadId) {
-        resolvedPersonajeId = pjEnOrden.entidadId;
-        console.log('[CombatView] ✅ Personaje desde orden (por nombre):', resolvedPersonajeId);
-      }
-    }
-    
-    // Si aún no se pudo resolver
-    if (!resolvedPersonajeId) {
-      console.error('[CombatView] ❌ No pude resolver personajeId con ningún método');
+    if (!myJugador) {
+      console.warn('[CombatView] ❌ No se encontró mi jugador en la lista:', user.id);
       return;
     }
     
-    console.log('[CombatView] ✅ Mi personajeId resuelto:', resolvedPersonajeId);
-    setMyPersonajeId(resolvedPersonajeId);
-    setSelectedActor(resolvedPersonajeId);
-    loadPersonajeData(resolvedPersonajeId);
+    console.log('[CombatView] 🔍 Mi jugador encontrado:', myJugador);
+    
+    // 🔥 SIMPLIFICADO: Usar nombre del personaje seleccionado
+    const personajeNombre = myJugador.selected_personaje?.nombre;
+    
+    if (!personajeNombre) {
+      console.warn('[CombatView] ❌ Usuario sin personaje seleccionado:', user.id, myJugador);
+      return;
+    }
+    
+    console.log('[CombatView] ✅ Personaje:', personajeNombre);
+    setMyPersonajeId(personajeNombre); // Guardar el nombre
+    
+    // 🔥 Buscar mi entidadId en los actores resueltos del combate
+    const myActor = debugActors.find(
+      actor => actor.tipo === 'PJ' && 
+      String(actor.nombre).toLowerCase() === String(personajeNombre).toLowerCase()
+    );
+    
+    if (myActor && myActor.entidadId) {
+      console.log('[CombatView] 🎯 Mi entidadId encontrado:', myActor.entidadId);
+      setSelectedActor(myActor.entidadId);
+      loadPersonajeData(myActor.entidadId);
+    } else {
+      console.warn('[CombatView] ⚠️ No se encontró entidadId para personaje:', personajeNombre, 'en actores:', debugActors);
+    }
     
     async function loadPersonajeData(personajeId) {
       try {
@@ -351,16 +309,21 @@ export default function CombatView({
   // 🔥 DEBUG: Log cuando turnoActual cambie
   useEffect(() => {
     if (turnoActual) {
+      // Buscar el actor actual en el orden por nombre
+      const actorActual = orden.find(a => a.entidadId === turnoActual.actorId && a.tipo === turnoActual.actorTipo);
+      const actorNombre = actorActual?.nombre || '';
+      
       console.log('[CombatView] 🎯 turnoActual actualizado:', {
         actorId: turnoActual.actorId,
         actorTipo: turnoActual.actorTipo,
+        actorNombre,
         numero: turnoActual.numero,
-        myPersonajeId,
-        isMyTurn: turnoActual && myPersonajeId && Number(turnoActual.actorId) === Number(myPersonajeId),
+        myPersonajeNombre: myPersonajeId,
+        isMyTurn: turnoActual && myPersonajeId && actorNombre && String(actorNombre).toLowerCase() === String(myPersonajeId).toLowerCase(),
         isEnemyTurn: turnoActual && turnoActual.actorTipo === 'EN'
       });
     }
-  }, [turnoActual, myPersonajeId]);
+  }, [turnoActual, myPersonajeId, orden]);
 
   useEffect(() => {
     // seleccionar actor activo por defecto (primer aliado del orden que sea tipo PJ)
@@ -380,7 +343,17 @@ export default function CombatView({
     if (!selectedActor) return alert('Selecciona un actor');
     try {
       setLoading(true);
-      const body = { actorId: selectedActor, targetId };
+      
+      // 🔥 Buscar el tipo del target en orden
+      const targetActor = orden.find(o => String(o.entidadId) === String(targetId));
+      const targetTipo = targetActor ? String(targetActor.tipo).toUpperCase() : 'PJ';
+      
+      const body = { 
+        userId: user?.id, 
+        personajeNombre: myPersonajeId, // Ahora es el nombre del personaje
+        targetId, 
+        targetTipo 
+      };
       if (accionId) body.accionId = accionId;
       if (objetoId) body.objetoId = objetoId;
       const res = await api.post(`/combate/${combateId}/turno/${turnoActual.id}/act`, body);
@@ -407,8 +380,11 @@ export default function CombatView({
     if (!turnoActual) return;
     try {
       setLoading(true);
-      // 🔥 Enviar actorId para validación en backend
-      const body = { actorId: turnoActual.actorId };
+      // 🔥 Enviar userId y nombre del personaje para validación
+      const body = { 
+        userId: user?.id, 
+        personajeNombre: myPersonajeId // Ahora es el nombre del personaje
+      };
       const res = await api.post(`/combate/${combateId}/turno/${turnoActual.id}/end`, body);
       const nxt = res.data?.turno || null;
       const ronda = res.data?.ronda;
@@ -455,7 +431,8 @@ export default function CombatView({
 
   const determineWinner = () => {
     const pjIds = orden.filter(o => o.tipo === 'PJ').map(o => o.entidadId);
-    const alivePJ = pjIds.some(id => (hpActual[String(id)] ?? 0) > 0);
+    // 🔥 Usar formato "tipo:id" para acceder al HP
+    const alivePJ = pjIds.some(id => (hpActual[`PJ:${id}`] ?? 0) > 0);
     return alivePJ ? 'victory' : 'defeat';
   };
 
@@ -505,15 +482,19 @@ export default function CombatView({
         {/* Panel retratos y HP (top-left) */}
         <div style={{ width: 220, background: '#0008', padding: 8, borderRadius: 8 }}>
           <h4>Party</h4>
-          {participants.filter(o => o.tipo === 'PJ').slice(0,4).map((o) => (
-            <div key={o.entidadId} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-              <img src={o.personaje?.portrait || null} alt="retrato" style={{ width: 48, height: 48, objectFit: 'cover', imageRendering: 'pixelated' }} />
-              <div>
-                <div style={{ fontSize: 12 }}>{o.personaje?.nombre || `PJ ${o.entidadId}`}</div>
-                <HpBar current={(hpActual?.[o.entidadId] ?? 0)} max={o.personaje?.puntosGolpe ?? 10} />
+          {participants.filter(o => o.tipo === 'PJ').slice(0,4).map((o) => {
+            // 🔥 Usar formato "tipo:id" para acceder al HP
+            const hpKey = `PJ:${o.entidadId}`;
+            return (
+              <div key={o.entidadId} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                <img src={o.personaje?.portrait || null} alt="retrato" style={{ width: 48, height: 48, objectFit: 'cover', imageRendering: 'pixelated' }} />
+                <div>
+                  <div style={{ fontSize: 12 }}>{o.personaje?.nombre || `PJ ${o.entidadId}`}</div>
+                  <HpBar current={(hpActual?.[hpKey] ?? 0)} max={o.personaje?.puntosGolpe ?? 10} />
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
 
         {/* Centro: actor que tiene turno */}
@@ -548,11 +529,17 @@ export default function CombatView({
             <div style={{ padding: 6, background: '#111', borderRadius: 6 }}>ninguno</div>
           ) : (
             (orden || []).filter(o => String(o.tipo).toUpperCase() === 'EN').map((e) => {
-              const name = e.nombre || e.name || (Array.isArray(debugActors) && (debugActors.find(d => String(d.entidadId) === String(e.entidadId) || String(d.id) === String(e.entidadId)) || {}).nombre) || `En ${e.entidadId}`;
+              // 🔥 Buscar enemigo en debugActors por tipo Y entidadId
+              const enemigoData = Array.isArray(debugActors) 
+                ? debugActors.find(d => d.tipo === 'EN' && String(d.entidadId) === String(e.entidadId))
+                : null;
               
-              // Obtener HP del enemigo
-              const currentHP = hpActual[e.entidadId] ?? 0;
-              const maxHP = (Array.isArray(debugActors) && (debugActors.find(d => String(d.entidadId) === String(e.entidadId))?.hpMax)) || 10;
+              const name = e.nombre || enemigoData?.nombre || `Enemigo ${e.entidadId}`;
+              
+              // 🔥 Obtener HP del enemigo usando formato "tipo:id"
+              const hpKey = `EN:${e.entidadId}`;
+              const currentHP = hpActual[hpKey] ?? 0;
+              const maxHP = enemigoData?.hpMax || 10;
               const hpPercent = maxHP > 0 ? Math.max(0, Math.min(100, (currentHP / maxHP) * 100)) : 0;
               
               return (
@@ -599,16 +586,19 @@ export default function CombatView({
           {/* 🔥 Calcular si es mi turno y construir lista de acciones */}
           {(() => {
             // Debug: log de valores para diagnosticar
+            // Comparar por nombre del personaje
+            const actorActual = orden.find(a => a.entidadId === turnoActual?.actorId && a.tipo === turnoActual?.actorTipo);
+            const actorNombre = actorActual?.nombre || '';
+            
             if (turnoActual && myPersonajeId) {
               console.log('[CombatView] Comparación de turno:', {
-                'turnoActual.actorId': turnoActual.actorId,
-                'turnoActual.actorTipo': turnoActual.actorTipo,
-                'myPersonajeId': myPersonajeId,
-                'son iguales': Number(turnoActual.actorId) === Number(myPersonajeId)
+                'actorNombre': actorNombre,
+                'myPersonajeNombre': myPersonajeId,
+                'son iguales': String(actorNombre).toLowerCase() === String(myPersonajeId).toLowerCase()
               });
             }
             
-            const isMyTurn = turnoActual && myPersonajeId && Number(turnoActual.actorId) === Number(myPersonajeId);
+            const isMyTurn = turnoActual && myPersonajeId && actorNombre && String(actorNombre).toLowerCase() === String(myPersonajeId).toLowerCase();
             const isEnemyTurn = turnoActual && turnoActual.actorTipo === 'EN';
             const disabled = loading || !isMyTurn || isEnemyTurn || turnoActual?.seHizoAccion;
             

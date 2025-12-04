@@ -6,7 +6,9 @@ import { AuthContext } from "../../auth/AuthProvider";
 import { usePartidaWS } from "../../utils/ws";
 import api, { deletePartida } from "../../utils/api";
 import Inventory from "./Inventory";
+import Trading from "./Trading";
 import CombatView from "./CombatView";
+import GameOverView from "./GameOverView";
 import "../../assets/styles/map.css";
 import { useNavigate } from 'react-router-dom';
 
@@ -29,6 +31,7 @@ export default function MapView({ partidaId, mapaId, personajesIds }) {
   const { user } = useContext(AuthContext);
   const navigate = useNavigate();
   const [combateActivo, setCombateActivo] = useState(null); // { combateId, combate, actores }
+  const [gameOver, setGameOver] = useState(null); // { partidaNombre, mensaje }
 
   const jugadorParam = useMemo(
     () => (user ? { id: user.id, username: user.username } : null),
@@ -51,19 +54,21 @@ export default function MapView({ partidaId, mapaId, personajesIds }) {
     ? (jugadores || []).find((j) => Number(j.id) === Number(user.id))
     : null;
 
+  // Usar selected_personaje_id (ID del catálogo) para cargar información del personaje
   const mySelectedPersonajeId = mySlot
-    ? mySlot.selected_personaje?.id || mySlot.selected_personaje_id || null
+    ? mySlot.selected_personaje_id || mySlot.selected_personaje?.id || null
     : null;
 
   // 🔢 ID numérico que usaremos para GET /personaje/:id
   let mySelectedPersonajeNumericId = mySelectedPersonajeId;
 
   if (mySlot) {
+    // selected_personaje_id es el ID del catálogo
     if (
-      mySlot.selected_personaje_db_id &&
-      /^\d+$/.test(String(mySlot.selected_personaje_db_id))
+      mySlot.selected_personaje_id &&
+      /^\d+$/.test(String(mySlot.selected_personaje_id))
     ) {
-      mySelectedPersonajeNumericId = Number(mySlot.selected_personaje_db_id);
+      mySelectedPersonajeNumericId = Number(mySlot.selected_personaje_id);
     } else if (
       mySlot.selected_personaje &&
       /^\d+$/.test(String(mySlot.selected_personaje.id))
@@ -88,8 +93,36 @@ export default function MapView({ partidaId, mapaId, personajesIds }) {
 
   // 🔐 Inventario solo para el dueño del personaje (tecla I)
   const [showInventory, setShowInventory] = useState(false);
+  
+  // 💰 Vista de comercio
+  const [showTrading, setShowTrading] = useState(false);
 
-  // Escuchar evento de WebSocket para mostrar combate como overlay
+  // 💬 Mensaje de interacción (visible para TODOS ahora)
+  const [interactionMessage, setInteractionMessage] = useState(null);
+
+  // ====== MAPEO AUXILIAR (nombre → sprite, jugador, etc) ======
+  const spriteById = new Map();
+  const jugadoresByNombre = {};
+  const jugadorById = new Map();
+  const jugadorByPersonajeId = {};
+
+  for (const j of jugadores || []) {
+    try {
+      jugadorById.set(String(j.id), j);
+      const sel = j.selected_personaje || null;
+      if (sel && sel.nombre) {
+        jugadoresByNombre[String(sel.nombre).toLowerCase()] = sel;
+      }
+
+      // Usar selected_personaje_id del catálogo
+      const pjId = j.selected_personaje_id || (sel && sel.id);
+      if (pjId != null) {
+        jugadorByPersonajeId[String(pjId)] = j;
+      }
+    } catch (e) {}
+  }
+
+  // 🔥 Escuchar evento de WebSocket para mostrar combate como overlay
   useEffect(() => {
     const handleShowCombat = (event) => {
       const { combateId, combate, actores, orden, turnoActual, hpActual } = event.detail || {};
@@ -113,6 +146,30 @@ export default function MapView({ partidaId, mapaId, personajesIds }) {
     return () => window.removeEventListener('show_combat_overlay', handleShowCombat);
   }, []);
 
+  // 💀 Listener para GAME_OVER (derrota total)
+  useEffect(() => {
+    const handleGameOver = (event) => {
+      const data = event.detail;
+      
+      if (data.type === 'GAME_OVER' && String(data.partidaId) === String(partidaId)) {
+        console.log('[MapView] 💀 GAME_OVER recibido:', data);
+        
+        // Cerrar combate si está activo
+        setCombateActivo(null);
+        
+        // Mostrar pantalla de Game Over
+        setGameOver({
+          partidaNombre: data.partidaNombre || 'Partida',
+          mensaje: data.mensaje || 'Todos los aliados han caído'
+        });
+      }
+    };
+
+    window.addEventListener('combat_message', handleGameOver);
+    return () => window.removeEventListener('combat_message', handleGameOver);
+  }, [partidaId]);
+
+  // 🎹 Toggle inventario con tecla I
   useEffect(() => {
     const handleKeyDown = (event) => {
       if (event.key === "i" || event.key === "I") {
@@ -125,34 +182,159 @@ export default function MapView({ partidaId, mapaId, personajesIds }) {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [mySelectedPersonajeNumericId]);
 
+  // 🧨 Escuchamos los movimientos vía evento global para sincronizar el mensaje entre TODOS
+  useEffect(() => {
+    // helper: dado un personajeId, encontrar al jugador dueño
+    const findOwnerByPersonajeId = (pjId) => {
+      if (pjId == null) return null;
+      const target = String(pjId);
+
+      return (
+        (jugadores || []).find((j) => {
+          const sel = j.selected_personaje || null;
+          // Usar selected_personaje_id del catálogo
+          const ids = [
+            j.selected_personaje_id,
+            sel?.id,
+          ]
+            .filter((x) => x != null)
+            .map((x) => String(x));
+          return ids.includes(target);
+        }) || null
+      );
+    };
+
+    const handler = (event) => {
+      const data = event.detail || {};
+      console.debug("[MapView] jugada_moved recibido:", data);
+
+      const evtPartidaId =
+        data.partidaId || data.partida_id || data.partida || null;
+      if (
+        evtPartidaId != null &&
+        String(evtPartidaId) !== String(partidaId)
+      ) {
+        return;
+      }
+
+      const payload = data.jugada || data;
+
+      const destX =
+        payload.x ?? payload.destX ?? payload.nueva_x ?? payload.pos_x ?? null;
+      const destY =
+        payload.y ?? payload.destY ?? payload.nueva_y ?? payload.pos_y ?? null;
+
+      const personajeIdFromPayload =
+        payload.personajeId ??
+        payload.personaje_id ??
+        payload.actor_id ??
+        null;
+
+      const jugadorId =
+        payload.jugadorId ??
+        payload.jugador_id ??
+        payload.usuarioId ??
+        payload.usuario_id ??
+        null;
+
+      if (destX == null || destY == null) return;
+
+      const casilla = casillas.find(
+        (c) => Number(c.x) === Number(destX) && Number(c.y) === Number(destY)
+      );
+      if (!casilla) {
+        setInteractionMessage(null);
+        return;
+      }
+
+      const objetosInCasilla = Array.isArray(casilla.objetos)
+        ? casilla.objetos
+        : [];
+      const enemigosInCasilla = Array.isArray(casilla.enemigos)
+        ? casilla.enemigos
+        : [];
+
+      const getNombreEnemigo = (e) => {
+        if (!e) return "";
+        if (typeof e === "string") return e;
+        if (e.nombre) return e.nombre;
+        if (e.enemigo && e.enemigo.nombre) return e.enemigo.nombre;
+        if (e.enemy && e.enemy.nombre) return e.enemy.nombre;
+        return "";
+      };
+
+      const getNombreObjeto = (o) => {
+        if (!o) return "";
+        if (typeof o === "string") return o;
+        if (o.nombre) return o.nombre;
+        if (o.objeto && o.objeto.nombre) return o.objeto.nombre;
+        if (o.item && o.item.nombre) return o.item.nombre;
+        return "";
+      };
+
+      // 💡 Personaje que se mueve: priorizamos el turnoActivo
+      const movingPersonajeId =
+        turnoActivo?.personajeId != null
+          ? turnoActivo.personajeId
+          : personajeIdFromPayload;
+
+      // Buscamos dueño
+      let owner = null;
+
+      if (movingPersonajeId != null) {
+        owner = findOwnerByPersonajeId(movingPersonajeId);
+      }
+
+      // Fallback: si viene jugadorId en el payload, tratamos de usarlo
+      if (!owner && jugadorId != null) {
+        owner =
+          (jugadores || []).find(
+            (j) => Number(j.id) === Number(jugadorId)
+          ) || null;
+      }
+
+      const actorName =
+        owner?.username ||
+        (movingPersonajeId != null
+          ? `Personaje ${movingPersonajeId}`
+          : "Un aventurero");
+
+      let msg = null;
+
+      if (enemigosInCasilla.length > 0) {
+        const nombresEnemigos = enemigosInCasilla
+          .map(getNombreEnemigo)
+          .filter(Boolean)
+          .join(", ");
+        if (nombresEnemigos) {
+          msg = `${actorName} ha detonado un combate con ${nombresEnemigos}.`;
+        }
+      } else if (objetosInCasilla.length > 0) {
+        const nombresObjetos = objetosInCasilla
+          .map(getNombreObjeto)
+          .filter(Boolean)
+          .join(", ");
+        if (nombresObjetos) {
+          msg = `${actorName} ha encontrado ${nombresObjetos}.`;
+        }
+      }
+
+      if (msg) setInteractionMessage(msg);
+      else setInteractionMessage(null);
+    };
+
+    window.addEventListener("jugada_moved", handler);
+    return () => window.removeEventListener("jugada_moved", handler);
+  }, [casillas, jugadores, partidaId, turnoActivo]);
+
+  // ⚠️ Returns condicionales después de TODOS los hooks
   if (loading) return <div className="map-status-text">Cargando...</div>;
   if (!mapa) return <div className="map-status-text">Error cargando mapa</div>;
 
   const fondoMapa = getFondo(mapa.nombre);
 
-  // ====== MAPEO JUGADOR ↔ PERSONAJE ======
+  // ====== SPRITES PARTY ======
 
-  const spriteById = new Map();
-  const jugadoresByNombre = {};
-  const jugadorByPersonajeId = {};
-  const jugadorById = new Map();
-
-  for (const j of jugadores || []) {
-    try {
-      jugadorById.set(String(j.id), j);
-      const sel = j.selected_personaje || null;
-      if (sel && sel.nombre) {
-        jugadoresByNombre[String(sel.nombre).toLowerCase()] = sel;
-      }
-      const pjId =
-        (sel && sel.id) || j.selected_personaje_id || j.selected_personaje_db_id;
-      if (pjId != null) {
-        jugadorByPersonajeId[String(pjId)] = j;
-      }
-    } catch (e) {}
-  }
-
-  // Sprites del party
   const spritesOtros = [];
   const spritesActivos = [];
   for (const o of sortedOrder) {
@@ -246,10 +428,8 @@ export default function MapView({ partidaId, mapaId, personajesIds }) {
             }
 
             if (spr) {
-              const pjIdSel =
-                (sel && sel.id) ||
-                jw.selected_personaje_id ||
-                jw.selected_personaje_db_id;
+              // Usar selected_personaje_id del catálogo
+              const pjIdSel = jw.selected_personaje_id || (sel && sel.id);
               const isActiveHere =
                 activePersonajeIdStr &&
                 pjIdSel != null &&
@@ -293,7 +473,6 @@ export default function MapView({ partidaId, mapaId, personajesIds }) {
     const candidatoIds = new Set();
     if (mySelectedPersonajeNumericId != null) candidatoIds.add(String(mySelectedPersonajeNumericId));
     if (mySlot) {
-      if (mySlot.selected_personaje_db_id != null) candidatoIds.add(String(mySlot.selected_personaje_db_id));
       if (mySlot.selected_personaje_id != null) candidatoIds.add(String(mySlot.selected_personaje_id));
       if (mySlot.selected_personaje && mySlot.selected_personaje.id != null) candidatoIds.add(String(mySlot.selected_personaje.id));
       // intentar mapear por nombre al orden de actores
@@ -319,6 +498,33 @@ export default function MapView({ partidaId, mapaId, personajesIds }) {
 
   const movimientosRestantes = turnoActivo?.movimientos_restantes ?? 0;
   const canMove = !!mySelectedPersonajeNumericId && myTurnActive && movimientosRestantes > 0;
+
+  // 🔍 Casilla actual de MI personaje
+  const myCurrentCasilla =
+    myJugada &&
+    casillas.find(
+      (c) =>
+        Number(c.x) === Number(myJugada.x) &&
+        Number(c.y) === Number(myJugada.y)
+    );
+
+  const tipoMyCasilla = String(myCurrentCasilla?.tipo || "").toLowerCase();
+  const canRestHere = tipoMyCasilla === "descanso";
+  const canTradeHere = tipoMyCasilla === "acceso";
+
+  // ⬇️ Datos de ciudad / mercader para la vista Trading
+  const currentCityEntry = myCurrentCasilla?.ciudades?.[0] || null;
+  const currentMerchantEntry =
+    currentCityEntry?.mercaderes?.[0] || null;
+
+  const ciudadNombre =
+    currentCityEntry?.ciudad?.nombre || null;
+
+  const mercader =
+    currentMerchantEntry?.mercader || null;
+
+  const mercaderInventario =
+    currentMerchantEntry?.inventario || [];
 
   const allowedTiles = new Set();
   // determinar la jugada efectiva desde la que calculamos movimientos:
@@ -391,10 +597,12 @@ export default function MapView({ partidaId, mapaId, personajesIds }) {
           return;
         }
       } catch (e) {}
+      
       const sendJugadorId = myJugada?.jugador_id ?? (turnoActivo?.personajeId ?? mySelectedPersonajeNumericId);
       try {
         console.debug('[MapView] Enviando movimiento con jugadorId:', sendJugadorId, 'miSelectedNumeric:', mySelectedPersonajeNumericId, 'myJugada:', myJugada, 'turnoActivo:', turnoActivo);
       } catch (e) {}
+      
       let r;
       try {
         r = await moveTo(sendJugadorId, c.x, c.y);
@@ -406,14 +614,15 @@ export default function MapView({ partidaId, mapaId, personajesIds }) {
         }
         throw err;
       }
-      // si el backend devolvió info de combate, redirigir a la vista de combate
+      
+      // 🔥 Si el backend devolvió info de combate, mostrar overlay
       if (r && r.combate) {
-        // compatibilidad: r.combate puede ser { combate, turnoActual, orden, hpActual } o directamente el combate
         const combatePayload = r.combate;
         const combateObj = (combatePayload && combatePayload.combate) ? combatePayload.combate : combatePayload;
         const actoresMap = r.actores || (combatePayload && combatePayload.actores) || [];
+        
         if (combateObj && combateObj.id) {
-          // normalizar orden antes de navegar para evitar duplicados o shape inconsistent
+          // normalizar orden antes de mostrar overlay
           const rawOrden = (combatePayload && (combatePayload.orden || combatePayload.ordenIniciativa)) || [];
           const normalizedOrden = (() => {
             if (!Array.isArray(rawOrden)) return [];
@@ -428,16 +637,21 @@ export default function MapView({ partidaId, mapaId, personajesIds }) {
                 const key = `${tipo}:${idStr}`;
                 if (seen.has(key)) continue;
                 seen.add(key);
-                out.push({ tipo, entidadId: Number.isFinite(Number(idStr)) ? Number(idStr) : idStr, iniciativa: it.iniciativa ?? null, detalle: it.detalle ?? null, nombre: it.nombre ?? it.name ?? null });
-              } catch (e) {
-                /* noop */
-              }
+                out.push({ 
+                  tipo, 
+                  entidadId: Number.isFinite(Number(idStr)) ? Number(idStr) : idStr, 
+                  iniciativa: it.iniciativa ?? null, 
+                  detalle: it.detalle ?? null, 
+                  nombre: it.nombre ?? it.name ?? null 
+                });
+              } catch (e) {}
             }
             return out;
           })();
-          // attach normalized orden into payload copy
+          
           const payloadWithOrden = { ...(combatePayload || {}), orden: normalizedOrden };
-          // Mostrar combate como overlay en lugar de navegar
+          
+          // Mostrar combate como overlay
           setCombateActivo({
             combateId: combateObj.id,
             combate: payloadWithOrden,
@@ -446,27 +660,29 @@ export default function MapView({ partidaId, mapaId, personajesIds }) {
           return;
         }
       }
-      // Recargar solo si NO es combate (para actualizar posición)
-      // REMOVIDO: window.location.reload() - causa problemas con WebSocket
+      
     } catch (e) {
       console.error("Error moviendo a casilla", e);
       alert(e?.response?.data?.error || "Error moviendo personaje");
     }
   };
 
-  // 🔁 Dueño del personaje activo para el banner
+  // 🔁 Datos del personaje activo (turno actual)
+  const activeSlot =
+    activePersonajeIdStr &&
+    sortedOrder.find((o) => String(o.actor?.id) === activePersonajeIdStr);
+
   let activeOwner = null;
   if (activePersonajeIdStr) {
-    const activeSlot = sortedOrder.find(
-      (o) => String(o.actor?.id) === activePersonajeIdStr
-    );
     if (activeSlot?.actor?.usuarioId != null) {
       activeOwner =
         jugadorById.get(String(activeSlot.actor.usuarioId)) || null;
-    } else {
-      activeOwner = jugadorByPersonajeId[activePersonajeIdStr] || null;
+    } else if (activeSlot?.actor?.id != null) {
+      activeOwner =
+        jugadorByPersonajeId[String(activeSlot.actor.id)] || null;
     }
   }
+  const activeActor = activeSlot?.actor || null;
 
   const nombreJugadorTurno = turnoActivo
     ? activeOwner?.username ||
@@ -478,7 +694,7 @@ export default function MapView({ partidaId, mapaId, personajesIds }) {
     ? `Es el turno de ${nombreJugadorTurno}, le quedan ${movimientosRestantes} movimientos...`
     : "Esperando próximo turno...";
 
-  // 🧍 Personaje del usuario actual (snapshot WS, se usa como fallback)
+  // 🧍 Personaje del usuario actual
   const myPersonaje =
     (mySlot && mySlot.selected_personaje) ||
     sortedOrder.find(
@@ -501,11 +717,6 @@ export default function MapView({ partidaId, mapaId, personajesIds }) {
       let pjNumericId = null;
 
       if (
-        j.selected_personaje_db_id &&
-        /^\d+$/.test(String(j.selected_personaje_db_id))
-      ) {
-        pjNumericId = Number(j.selected_personaje_db_id);
-      } else if (
         j.selected_personaje_id &&
         /^\d+$/.test(String(j.selected_personaje_id))
       ) {
@@ -557,21 +768,41 @@ export default function MapView({ partidaId, mapaId, personajesIds }) {
     }
   };
 
+  // === Handlers de los botones ===
+  const handleDescansarClick = () => {
+    if (!canRestHere) return;
+    console.debug("[MapView] Descansar clicado en casilla de descanso");
+  };
+
+  const handleInventoryButtonClick = () => {
+    if (!mySelectedPersonajeNumericId) return;
+    setShowInventory(true);
+  };
+
+  const handleComerciarClick = () => {
+    if (!canTradeHere) return;
+    setShowTrading(true); // ⬅️ antes: navigate("trading")
+  };
+
   return (
     <div className="map-root">
       {/* HEADER de retratos */}
       <div className="map-header">
         {sortedOrder.map((slot, i) => {
           const pjId = slot.actor?.id;
+
           // 🔗 Dueño del personaje para este retrato
-          let owner =
-            (slot.actor?.usuarioId != null
-              ? jugadorById.get(String(slot.actor.usuarioId))
-              : null) ||
-            jugadorByPersonajeId[String(pjId)] ||
-            null;
+          let owner = null;
+
+          if (slot.actor?.usuarioId != null) {
+            owner = jugadorById.get(String(slot.actor.usuarioId)) || null;
+          }
+          if (!owner && pjId != null) {
+            owner = jugadorByPersonajeId[String(pjId)] || null;
+          }
 
           const username = owner?.username || "—";
+
           const isActive =
             activePersonajeIdStr &&
             String(pjId) === String(activePersonajeIdStr);
@@ -604,9 +835,7 @@ export default function MapView({ partidaId, mapaId, personajesIds }) {
 
       {/* MAPA + GRID */}
       <div className="map-main">
-        {fondoMapa && (
-          <img src={fondoMapa} className="map-background" />
-        )}
+        {fondoMapa && <img src={fondoMapa} className="map-background" />}
 
         <Grid
           casillas={casillas}
@@ -618,93 +847,137 @@ export default function MapView({ partidaId, mapaId, personajesIds }) {
           allowedTiles={allowedTiles}
         />
 
-          {/* Debug: mostrar enemigos en la casilla actual y botón forzar combate */}
-          <div style={{ position: 'absolute', bottom: 12, left: 12, background: '#0008', padding: '6px 10px', borderRadius: 6, fontSize: 12 }}>
-            <div style={{ marginBottom: 6 }}><strong>Enemigos casilla:</strong>{' '}
-              {(() => {
+        {/* Mensaje amarillo de interacción */}
+        {interactionMessage && (
+          <div className="map-interaction-banner">{interactionMessage}</div>
+        )}
+
+        {/* Debug: mostrar enemigos en la casilla actual y botón forzar combate */}
+        <div style={{ position: 'absolute', bottom: 12, left: 12, background: '#0008', padding: '6px 10px', borderRadius: 6, fontSize: 12 }}>
+          <div style={{ marginBottom: 6 }}><strong>Enemigos casilla:</strong>{' '}
+            {(() => {
+              try {
+                const current = casillas.find(ca => Number(ca.x) === Number(pos.x) && Number(ca.y) === Number(pos.y));
+                if (!current) return '—';
+                const enem = current.enemigos || [];
+                if (!Array.isArray(enem) || enem.length === 0) return 'ninguno';
+                // Mostrar IDs de enemigos pre-creados
+                return enem.map(e => e?.nombre || e?.id || '?').join(', ');
+              } catch (e) { return '—'; }
+            })()}
+          </div>
+          <div>
+            <button
+              onClick={async () => {
                 try {
                   const current = casillas.find(ca => Number(ca.x) === Number(pos.x) && Number(ca.y) === Number(pos.y));
-                  if (!current) return '—';
-                  const enem = current.enemigos || [];
-                  if (!enem || enem.length === 0) return 'ninguno';
-                  return enem.join(', ');
-                } catch (e) { return '—'; }
-              })()}
-            </div>
-            <div>
-              <button
-                onClick={async () => {
-                  try {
-                    const current = casillas.find(ca => Number(ca.x) === Number(pos.x) && Number(ca.y) === Number(pos.y));
-                    if (!current || !current.enemigos || (Array.isArray(current.enemigos) && current.enemigos.length === 0)) {
-                      alert('No hay enemigos en la casilla actual');
-                      return;
-                    }
-                    const actores = (personajesIds || []).map((id) => ({ entidadId: Number(id), tipo: 'PJ' }));
-                    const enem = Array.isArray(current.enemigos) ? current.enemigos : [current.enemigos];
-                    for (const e of enem) {
-                      if (e == null) continue;
-                      if (typeof e === 'object') {
-                        const name = e.nombre ?? e.name ?? (e.id != null ? String(e.id) : null);
-                        if (name != null) actores.push({ tipo: 'EN', entidadId: String(name) });
-                        else actores.push({ tipo: 'EN', entidadId: JSON.stringify(e) });
-                      } else {
-                        actores.push({ tipo: 'EN', entidadId: String(e) });
-                      }
-                    }
-
-                    console.debug('[MapView] Forzando combate con actores:', actores);
-                    const combateRes = await api.post('/combate', { partidaId, actores });
-                    console.debug('[MapView] respuesta forzar combate:', combateRes && combateRes.data);
-                    const combatePayload = combateRes?.data?.combate || combateRes?.data;
-                    const actoresMap = combateRes?.data?.actores || [];
-                    if (combatePayload && combatePayload.id) {
-                      // normalize orden before navigation
-                      const rawOrden = (combatePayload && (combatePayload.orden || combatePayload.ordenIniciativa)) || [];
-                      const normalizedOrden = Array.isArray(rawOrden)
-                        ? rawOrden.reduce((acc, it) => {
-                            try {
-                              const tipo = String(it.tipo || '').toUpperCase();
-                              const id = String(it.entidadId ?? it.actorId ?? it.id ?? '').trim();
-                              if (!id) return acc;
-                              const key = `${tipo}:${id}`;
-                              if (acc.__seen.has(key)) return acc;
-                              acc.__seen.add(key);
-                              acc.push({ tipo, entidadId: Number.isFinite(Number(id)) ? Number(id) : id, iniciativa: it.iniciativa ?? null, detalle: it.detalle ?? null, nombre: it.nombre ?? it.name ?? null });
-                            } catch (e) {}
-                            return acc;
-                          }, []).filter(Boolean)
-                        : [];
-                      const payloadWithOrden = { ...(combatePayload || {}), orden: normalizedOrden };
-                      // Mostrar combate como overlay
-                      setCombateActivo({
-                        combateId: combatePayload.id,
-                        combate: payloadWithOrden,
-                        actores: actoresMap
-                      });
-                      return;
-                    }
-                    alert('Combate iniciado, pero no se devolvió id (ver consola)');
-                  } catch (e) {
-                    console.error('Error forzando combate', e);
-                    alert('Error forzando combate: ' + (e?.response?.data?.error || e.message || e));
+                  if (!current || !current.enemigos || (Array.isArray(current.enemigos) && current.enemigos.length === 0)) {
+                    alert('No hay enemigos en la casilla actual');
+                    return;
                   }
-                }}
-                style={{ padding: '6px 8px', fontSize: 12 }}
-              >Forzar combate (debug)</button>
-            </div>
+                  
+                  // 🔥 Construir actores: PJs + Enemigos pre-creados (enviar IDs de DB)
+                  const actores = (personajesIds || []).map((id) => ({ entidadId: Number(id), tipo: 'PJ' }));
+                  const enem = Array.isArray(current.enemigos) ? current.enemigos : [current.enemigos];
+                  
+                  for (const e of enem) {
+                    if (e == null) continue;
+                    // Los enemigos ahora vienen como objetos completos desde casilla_controller.js
+                    // con id numérico de la DB
+                    if (typeof e === 'object' && e.id != null) {
+                      actores.push({ tipo: 'EN', entidadId: Number(e.id) });
+                    } else {
+                      console.warn('[MapView] Enemigo sin ID válido:', e);
+                    }
+                  }
+
+                  console.debug('[MapView] Forzando combate con actores (enemigos pre-creados):', actores);
+                  const combateRes = await api.post('/combate', { partidaId, actores });
+                  console.debug('[MapView] respuesta forzar combate:', combateRes && combateRes.data);
+                  
+                  const combatePayload = combateRes?.data?.combate || combateRes?.data;
+                  const actoresMap = combateRes?.data?.actores || [];
+                  
+                  if (combatePayload && combatePayload.id) {
+                    const rawOrden = (combatePayload && (combatePayload.orden || combatePayload.ordenIniciativa)) || [];
+                    const normalizedOrden = Array.isArray(rawOrden)
+                      ? rawOrden.reduce((acc, it) => {
+                          try {
+                            const tipo = String(it.tipo || '').toUpperCase();
+                            const id = String(it.entidadId ?? it.actorId ?? it.id ?? '').trim();
+                            if (!id) return acc;
+                            const key = `${tipo}:${id}`;
+                            if (!acc.__seen) acc.__seen = new Set();
+                            if (acc.__seen.has(key)) return acc;
+                            acc.__seen.add(key);
+                            acc.push({ 
+                              tipo, 
+                              entidadId: Number.isFinite(Number(id)) ? Number(id) : id, 
+                              iniciativa: it.iniciativa ?? null, 
+                              detalle: it.detalle ?? null, 
+                              nombre: it.nombre ?? it.name ?? null 
+                            });
+                          } catch (e) {}
+                          return acc;
+                        }, []).filter(Boolean)
+                      : [];
+                    
+                    const payloadWithOrden = { ...(combatePayload || {}), orden: normalizedOrden };
+                    
+                    // Mostrar combate como overlay
+                    setCombateActivo({
+                      combateId: combatePayload.id,
+                      combate: payloadWithOrden,
+                      actores: actoresMap
+                    });
+                    return;
+                  }
+                  alert('Combate iniciado, pero no se devolvió id (ver consola)');
+                } catch (e) {
+                  console.error('Error forzando combate', e);
+                  alert('Error forzando combate: ' + (e?.response?.data?.error || e.message || e));
+                }
+              }}
+              style={{ padding: '6px 8px', fontSize: 12 }}
+            >Forzar combate (debug)</button>
           </div>
+        </div>
+
         <div className="map-turn-banner">{textoTurno}</div>
       </div>
 
+      {/* Nombre del mapa */}
       <div className="map-name">{mapa.nombre}</div>
 
-      <button
-        onClick={handleAbandonar}
-        className="map-abandon-button"
-      >
-        Abandonar partida
-      </button>
+      {/* Botones */}
+      <div className="map-actions">
+        <button
+          className="map-abandon-button map-action-button"
+          onClick={handleDescansarClick}
+          disabled={!canRestHere}
+        >
+          Descansar
+        </button>
+        <button
+          className="map-abandon-button map-action-button"
+          onClick={handleInventoryButtonClick}
+        >
+          Inventario
+        </button>
+        <button
+          className="map-abandon-button map-action-button"
+          onClick={handleComerciarClick}
+          disabled={!canTradeHere}
+        >
+          Comerciar
+        </button>
+        <button
+          className="map-abandon-button map-action-button"
+          onClick={handleAbandonar}
+        >
+          Abandonar
+        </button>
+      </div>
 
       <Inventory
         personaje={myPersonaje}
@@ -713,7 +986,18 @@ export default function MapView({ partidaId, mapaId, personajesIds }) {
         items={myPersonaje?.inventario || []}
         isOpen={showInventory}
         onClose={() => setShowInventory(false)}
-        teamMembers={teamMembers} 
+        teamMembers={teamMembers}
+      />
+
+      <Trading
+        personaje={myPersonaje}
+        personajeId={mySelectedPersonajeNumericId}
+        items={myPersonaje?.inventario || []}
+        ciudadNombre={ciudadNombre}
+        mercader={mercader}
+        mercaderInventario={mercaderInventario}
+        isOpen={showTrading}
+        onClose={() => setShowTrading(false)}
       />
 
       {/* Overlay de combate */}
@@ -737,6 +1021,17 @@ export default function MapView({ partidaId, mapaId, personajesIds }) {
             onClose={() => setCombateActivo(null)}
           />
         </div>
+      )}
+
+      {/* 💀 Pantalla de GAME OVER */}
+      {gameOver && (
+        <GameOverView
+          partidaNombre={gameOver.partidaNombre}
+          onContinue={() => {
+            setGameOver(null);
+            navigate('/');
+          }}
+        />
       )}
     </div>
   );

@@ -1,0 +1,155 @@
+/* trading.css */
+/* Vista de comercio, basada en inventory.css */
+
+/* El modal de trading se comporta como el de inventario, pero con 3 columnas */
+.trading-modal {
+  max-width: 1200px;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  margin: 0 auto;
+}
+
+/* Layout principal: comerciante - ciudad - jugador */
+.trading-layout {
+  display: flex;
+  justify-content: center;
+  align-items: stretch; /* columnas con la misma altura → alineación inferior consistente */
+  gap: 0.35rem; /* inventarios más cerca del centro */
+}
+
+/* Columnas laterales */
+.trading-column {
+  flex: 0.95 1 0; /* algo más estrechas para acercarlas al centro */
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.trading-column--left,
+.trading-column--right {
+  min-width: 0;
+}
+
+/* Header con nombre + oro: nombre a la IZQUIERDA, oro a la DERECHA */
+.trading-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+  text-align: left;
+  width: 100%;
+}
+
+.trading-name {
+  font-size: 0.9rem; /* un poco más pequeño */
+  font-weight: 700;
+}
+
+.trading-gold {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-weight: 600;
+}
+
+.trading-gold-icon {
+  display: inline-block;
+  object-fit: contain; /* no escalamos forzado la imagen del icono */
+}
+
+.trading-gold-amount {
+  font-size: 0.9rem;
+}
+
+/* Reutilizamos la parte inferior del inventario:
+   filtros + grid + panel de detalles */
+.trading-inventory {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Centro: ciudad + sprite del mercader */
+.trading-center {
+  flex: 0.8 0 0; /* un pelín más estrecho para acercar aún más los inventarios */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end; /* fondo+gif apoyados en la parte baja de la columna */
+}
+
+/* Contenedor relativo para poder alinear el gif abajo */
+.trading-city-wrapper {
+  position: relative;
+  display: inline-block;
+  margin-bottom: 0; /* alineado con la base de los cuadros de info */
+}
+
+/* Ciudad: tamaño original, solo limitamos a no desbordar horizontalmente */
+.trading-city-image {
+  display: block;
+  height: auto;
+  max-width: 100%;
+}
+
+/* Sprite del mercader:
+   - ocupa el MISMO ANCHO que el fondo
+   - centrado y pegado abajo del fondo */
+.trading-merchant-sprite {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+  display: flex;
+  justify-content: center;
+  align-items: flex-end;
+}
+
+.trading-merchant-sprite img {
+  display: block;
+  width: 100%;  /* mismo ancho que la imagen de ciudad */
+  height: auto;
+}
+
+/* Panel de detalles en cada columna, bajo el grid */
+.trading-details-panel {
+  margin-top: 0.75rem;
+  padding: 0.75rem;   /* un poco más de “caja” */
+  min-height: 160px;  /* cuadros informativos un poco más grandes */
+}
+
+/* Aumentar un pelín el texto dentro de los cuadros de detalles en trading */
+.trading-details-panel .inventory-details-content {
+  font-size: 0.5rem;
+}
+
+/* Errores de carga de PJ */
+.trading-error {
+  margin-top: 0.5rem;
+}
+
+/* Fallback de ciudad cuando no hay imagen, sin colores nuevos */
+.trading-city-fallback {
+  position: relative;
+  padding: 1rem;
+  text-align: center;
+}
+
+.trading-city-fallback-title {
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+
+/* Responsive: apilar columnas en móvil */
+@media (max-width: 900px) {
+  .trading-layout {
+    flex-direction: column;
+  }
+
+  .trading-center {
+    order: -1; /* ciudad arriba en móvil */
+  }
+}

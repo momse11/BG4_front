@@ -2,6 +2,7 @@ import PartySprites from "./PartySprites";
 import cofreIcon from "../../assets/tablero/Cofre.png";
 import fogataIcon from "../../assets/tablero/Fogata.gif";
 import cartelIcon from "../../assets/tablero/Cartel.png";
+import bossIcon from "../../assets/tablero/Jefe.gif"; // 👈 NUEVO
 
 export default function Grid({
   casillas,
@@ -30,6 +31,7 @@ export default function Grid({
 
   const getTypeIcon = (tipo) => {
     tipo = (tipo || "").toLowerCase();
+    if (tipo.includes("jefe")) return bossIcon;       // 👈 NUEVO
     if (tipo.includes("cofre")) return cofreIcon;
     if (tipo.includes("descanso")) return fogataIcon;
     if (tipo.includes("acceso") || tipo.includes("transito")) return cartelIcon;
@@ -100,7 +102,7 @@ export default function Grid({
               ) : null;
             })()}
 
-            {/* ÍCONOS DE COFRE / FOGATA / CARTEL (tamaño original) */}
+            {/* ÍCONOS DE COFRE / FOGATA / CARTEL / JEFE */}
             {icon && (
               <img
                 src={icon}
