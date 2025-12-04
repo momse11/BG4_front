@@ -7,6 +7,7 @@ import { usePartidaWS } from "../../utils/ws";
 import { deletePartida } from "../../utils/api";
 import { useNavigate } from "react-router-dom";
 import Inventory from "./Inventory";
+import Trading from "./Trading"; // ⬅️ NUEVO
 import "../../assets/styles/map.css";
 
 const fondos = import.meta.glob("/src/assets/tablero/mapas/*", { eager: true });
@@ -87,6 +88,9 @@ export default function MapView({ partidaId, mapaId, personajesIds }) {
   // 🔐 Inventario solo para el dueño del personaje (tecla I)
   const [showInventory, setShowInventory] = useState(false);
 
+  // 💰 Vista de comercio
+  const [showTrading, setShowTrading] = useState(false); // ⬅️ NUEVO
+
   // 💬 Mensaje de interacción (visible para TODOS ahora)
   const [interactionMessage, setInteractionMessage] = useState(null);
 
@@ -163,17 +167,9 @@ export default function MapView({ partidaId, mapaId, personajesIds }) {
       const payload = data.jugada || data;
 
       const destX =
-        payload.x ??
-        payload.destX ??
-        payload.nueva_x ??
-        payload.pos_x ??
-        null;
+        payload.x ?? payload.destX ?? payload.nueva_x ?? payload.pos_x ?? null;
       const destY =
-        payload.y ??
-        payload.destY ??
-        payload.nueva_y ??
-        payload.pos_y ??
-        null;
+        payload.y ?? payload.destY ?? payload.nueva_y ?? payload.pos_y ?? null;
 
       const personajeIdFromPayload =
         payload.personajeId ??
@@ -439,6 +435,20 @@ export default function MapView({ partidaId, mapaId, personajesIds }) {
   const canRestHere = tipoMyCasilla === "descanso";
   const canTradeHere = tipoMyCasilla === "acceso";
 
+  // ⬇️ Datos de ciudad / mercader para la vista Trading
+  const currentCityEntry = myCurrentCasilla?.ciudades?.[0] || null;
+  const currentMerchantEntry =
+    currentCityEntry?.mercaderes?.[0] || null;
+
+  const ciudadNombre =
+    currentCityEntry?.ciudad?.nombre || null;
+
+  const mercader =
+    currentMerchantEntry?.mercader || null;
+
+  const mercaderInventario =
+    currentMerchantEntry?.inventario || [];
+
   const allowedTiles = new Set();
   if (canMove && myJugada) {
     const curX = Number(myJugada.x);
@@ -625,7 +635,7 @@ export default function MapView({ partidaId, mapaId, personajesIds }) {
 
   const handleComerciarClick = () => {
     if (!canTradeHere) return;
-    navigate("trading");
+    setShowTrading(true); // ⬅️ antes: navigate("trading")
   };
 
   return (
@@ -740,6 +750,17 @@ export default function MapView({ partidaId, mapaId, personajesIds }) {
         isOpen={showInventory}
         onClose={() => setShowInventory(false)}
         teamMembers={teamMembers}
+      />
+
+      <Trading
+        personaje={myPersonaje}
+        personajeId={mySelectedPersonajeNumericId}
+        items={myPersonaje?.inventario || []}
+        ciudadNombre={ciudadNombre}
+        mercader={mercader}
+        mercaderInventario={mercaderInventario}
+        isOpen={showTrading}
+        onClose={() => setShowTrading(false)}
       />
     </div>
   );
