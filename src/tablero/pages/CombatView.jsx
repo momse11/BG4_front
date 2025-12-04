@@ -111,14 +111,23 @@ export default function CombatView({
         }
         
         if (data.type === 'COMBAT_ACTION' && String(data.combateId) === String(combateId)) {
-          // Actualizar HP cuando hay una acción
-          if (data.result?.hp) {
+          // Actualizar HP cuando hay una acción (la estructura es data.hp, no data.result.hp)
+          if (data.hp && data.hp.objetivo != null && data.hp.despues != null) {
+            console.log('[CombatView] 💥 Actualizando HP:', data.hp.objetivo, '→', data.hp.despues);
             setHpActual((prev) => ({
               ...prev,
-              [data.result.hp.objetivo]: data.result.hp.despues,
+              [data.hp.objetivo]: data.hp.despues,
             }));
           }
-          console.log('[CombatView] Acción de combate:', data.isAI ? 'IA' : 'Jugador', data.result);
+          console.log('[CombatView] Acción de combate:', data.isAI ? 'IA' : 'Jugador', data);
+        }
+        
+        if (data.type === 'COMBAT_TURN_UPDATED' && String(data.combateId) === String(combateId)) {
+          // Actualizar estado del turno (seHizoAccion, seHizoAccionExtra) para deshabilitar botones
+          if (data.turnoActual) {
+            console.log('[CombatView] 🔄 Turno actualizado - seHizoAccion:', data.turnoActual.seHizoAccion, 'seHizoAccionExtra:', data.turnoActual.seHizoAccionExtra);
+            setTurnoActual(data.turnoActual);
+          }
         }
         
         if (data.type === 'COMBAT_ENDED' && String(data.combateId) === String(combateId)) {
@@ -531,7 +540,7 @@ export default function CombatView({
           </div>
         </div>
 
-        {/* Right: enemigos (texto por ahora) */}
+        {/* Right: enemigos con HP */}
         <div style={{ width: 240, background: '#0008', padding: 8, borderRadius: 8 }}>
           <h4>Enemigos</h4>
           {/* listar enemigos desde orden / debugActors */}
@@ -540,7 +549,29 @@ export default function CombatView({
           ) : (
             (orden || []).filter(o => String(o.tipo).toUpperCase() === 'EN').map((e) => {
               const name = e.nombre || e.name || (Array.isArray(debugActors) && (debugActors.find(d => String(d.entidadId) === String(e.entidadId) || String(d.id) === String(e.entidadId)) || {}).nombre) || `En ${e.entidadId}`;
-              return <div key={`${e.tipo}:${e.entidadId}`} style={{ padding: 6, background: '#111', borderRadius: 6, marginBottom: 6 }}>{name}</div>;
+              
+              // Obtener HP del enemigo
+              const currentHP = hpActual[e.entidadId] ?? 0;
+              const maxHP = (Array.isArray(debugActors) && (debugActors.find(d => String(d.entidadId) === String(e.entidadId))?.hpMax)) || 10;
+              const hpPercent = maxHP > 0 ? Math.max(0, Math.min(100, (currentHP / maxHP) * 100)) : 0;
+              
+              return (
+                <div key={`${e.tipo}:${e.entidadId}`} style={{ padding: 8, background: '#111', borderRadius: 6, marginBottom: 6 }}>
+                  <div style={{ marginBottom: 4, fontWeight: 'bold' }}>{name}</div>
+                  <div style={{ fontSize: 12, marginBottom: 4, color: '#aaa' }}>
+                    HP: {currentHP} / {maxHP}
+                  </div>
+                  <div style={{ width: '100%', height: 12, background: '#333', borderRadius: 6, overflow: 'hidden' }}>
+                    <div style={{ 
+                      width: `${hpPercent}%`, 
+                      height: '100%', 
+                      background: currentHP === 0 ? '#666' : hpPercent > 50 ? '#4a4' : hpPercent > 20 ? '#da3' : '#e33',
+                      borderRadius: 6,
+                      transition: 'width 0.3s ease'
+                    }} />
+                  </div>
+                </div>
+              );
             })
           )}
           {/* Debug panel toggle */}
@@ -579,7 +610,7 @@ export default function CombatView({
             
             const isMyTurn = turnoActual && myPersonajeId && Number(turnoActual.actorId) === Number(myPersonajeId);
             const isEnemyTurn = turnoActual && turnoActual.actorTipo === 'EN';
-            const disabled = loading || !isMyTurn || isEnemyTurn;
+            const disabled = loading || !isMyTurn || isEnemyTurn || turnoActual?.seHizoAccion;
             
             // 🔥 Construir lista de acciones en orden correcto
             const botonesAcciones = [];
