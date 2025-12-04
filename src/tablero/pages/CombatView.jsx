@@ -1,8 +1,6 @@
 import React, { useEffect, useState, useContext, useMemo } from 'react';
 import api from '../../utils/api';
-import useCombateWS from '../hooks/useCombateWS';
 import { AuthContext } from '../../auth/AuthProvider';
-import { usePartidaWS } from '../../utils/ws';
 
 // Normaliza y elimina duplicados en una lista de actores
 function normalizeOrden(list = []) {
@@ -83,46 +81,58 @@ export default function CombatView({
   const [debugActors, setDebugActors] = useState(initialActores || []);
   const [hydrated, setHydrated] = useState(true); // Ya está hidratado desde props
 
-  // Escuchar eventos de combate vía WebSocket
-  useCombateWS(partidaId, (event) => {
-    try {
-      console.debug('[CombatView] WS event:', event.type, event);
-      
-      if (event.type === 'COMBAT_TURN_CHANGED' && String(event.combateId) === String(combateId)) {
-        // Actualizar turno actual y HP cuando cambia el turno
-        if (event.turnoActual || event.turno) {
-          setTurnoActual(event.turnoActual || event.turno);
+  // 🔥 Escuchar eventos de combate desde el WebSocket de usePartidaWS (MapView)
+  // CombatView es un OVERLAY sin su propio WebSocket, solo escucha eventos emitidos por MapView
+  useEffect(() => {
+    const handleCombatMessage = (event) => {
+      try {
+        const data = event.detail;
+        console.debug('[CombatView] 🔥 combat_message event:', data.type, data);
+        
+        if (data.type === 'COMBAT_TURN_CHANGED' && String(data.combateId) === String(combateId)) {
+          // Actualizar turno actual y HP cuando cambia el turno
+          const nuevoTurno = data.turnoActual || data.turno;
+          if (nuevoTurno) {
+            console.log('[CombatView] 🔄 Actualizando turno:', {
+              anterior: turnoActual,
+              nuevo: nuevoTurno,
+              actorId: nuevoTurno.actorId,
+              actorTipo: nuevoTurno.actorTipo
+            });
+            setTurnoActual(nuevoTurno);
+          }
+          if (data.hpActual) {
+            setHpActual(data.hpActual);
+          }
+          if (data.orden) {
+            console.log('[CombatView] 🔄 Actualizando orden:', data.orden);
+            setOrden(data.orden);
+          }
         }
-        if (event.hpActual) {
-          setHpActual(event.hpActual);
+        
+        if (data.type === 'COMBAT_ACTION' && String(data.combateId) === String(combateId)) {
+          // Actualizar HP cuando hay una acción
+          if (data.result?.hp) {
+            setHpActual((prev) => ({
+              ...prev,
+              [data.result.hp.objetivo]: data.result.hp.despues,
+            }));
+          }
+          console.log('[CombatView] Acción de combate:', data.isAI ? 'IA' : 'Jugador', data.result);
         }
-        console.log('[CombatView] Turno cambiado:', event.turnoActual || event.turno);
+        
+        if (data.type === 'COMBAT_ENDED' && String(data.combateId) === String(combateId)) {
+          // Cerrar overlay
+          if (onClose) onClose();
+        }
+      } catch (e) {
+        console.error('[CombatView] Error procesando combat_message:', e);
       }
-      
-      if (event.type === 'COMBAT_ACTION' && String(event.combateId) === String(combateId)) {
-        // Actualizar HP cuando hay una acción (especialmente ataques de IA)
-        if (event.result?.hp) {
-          setHpActual((prev) => ({
-            ...prev,
-            [event.result.hp.objetivo]: event.result.hp.despues,
-          }));
-        }
-        console.log('[CombatView] Acción de combate:', event.isAI ? 'IA' : 'Jugador', event.result);
-      }
-      
-      if (event.type === 'COMBAT_ENDED' && String(event.combateId) === String(combateId)) {
-        // Navegar a victoria/derrota
-        const resultado = event.resultado || 'victoria';
-        if (resultado === 'victoria') {
-          navigate(`/partida/${partidaId}/victory`, { state: { combateId } });
-        } else {
-          navigate(`/partida/${partidaId}/defeat`, { state: { combateId } });
-        }
-      }
-    } catch (e) {
-      console.error('[CombatView] Error procesando evento WS:', e);
-    }
-  });
+    };
+    
+    window.addEventListener('combat_message', handleCombatMessage);
+    return () => window.removeEventListener('combat_message', handleCombatMessage);
+  }, [combateId, turnoActual, myPersonajeId, onClose]);
 
     // Si el WS guardó payload del combate en sessionStorage, úsalo al montar
   useEffect(() => {
@@ -328,6 +338,20 @@ export default function CombatView({
       }
     }
   }, [user, jugadores, orden, debugActors]);
+
+  // 🔥 DEBUG: Log cuando turnoActual cambie
+  useEffect(() => {
+    if (turnoActual) {
+      console.log('[CombatView] 🎯 turnoActual actualizado:', {
+        actorId: turnoActual.actorId,
+        actorTipo: turnoActual.actorTipo,
+        numero: turnoActual.numero,
+        myPersonajeId,
+        isMyTurn: turnoActual && myPersonajeId && Number(turnoActual.actorId) === Number(myPersonajeId),
+        isEnemyTurn: turnoActual && turnoActual.actorTipo === 'EN'
+      });
+    }
+  }, [turnoActual, myPersonajeId]);
 
   useEffect(() => {
     // seleccionar actor activo por defecto (primer aliado del orden que sea tipo PJ)

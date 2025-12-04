@@ -190,6 +190,15 @@ export function usePartidaWS(partidaId, jugador, options = {}) {
             );
           }
 
+          // COMBAT messages: dispatch custom event para que MapView/CombatView los capture
+          if (data?.type && typeof data.type === 'string' && data.type.startsWith('COMBAT_')) {
+            try {
+              window.dispatchEvent(new CustomEvent('combat_message', { detail: data }));
+            } catch (e) {
+              console.error('[usePartidaWS] Error dispatching combat_message:', e);
+            }
+          }
+
           // COMBAT started: redirect to /partida/:partidaId/combate/:id
           if (data?.type === 'COMBAT_STARTED') {
             try {
