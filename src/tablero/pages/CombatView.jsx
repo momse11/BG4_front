@@ -1,4 +1,3 @@
-// src/components/combate/CombatView.jsx
 import React, {
   useEffect,
   useState,
@@ -87,45 +86,83 @@ function buildActionSummary(data, resolveName) {
   const hp = data.hp || data.result?.hp || {};
   const dano = data.dano || data.result?.dano || {};
   const hitInfo = data.hit || data.result?.hit || null;
-  const estados =
-    data.estadosAplicados || data.result?.estadosAplicados || [];
+  const estados = data.estadosAplicados || data.result?.estadosAplicados || [];
   const esBenef = !!recurso.esBeneficioso;
 
-  // Deducción de tipo de actor si no viene
+  const actorId = data.actorId;
+
+  // Deducción de tipo de actor si no viene (IA = enemigo)
   let actorTipoGuess = null;
   if (data.isAI) actorTipoGuess = 'EN';
 
   const actorNombre =
-    resolveName(data.actorId, actorTipoGuess) ||
-    (data.isAI ? 'El enemigo' : 'Alguien');
+    resolveName(actorId, actorTipoGuess) || (data.isAI ? 'El enemigo' : 'Alguien');
 
   const targetTipo = hp.objetivoTipo || (data.isAI ? 'PJ' : null);
   const targetNombre =
     resolveName(hp.objetivo, targetTipo) || 'su objetivo';
   const accionNombre = recurso.nombre || 'una acción';
 
-  // Cabecera amarilla
-  const headerYellow = `${actorNombre} ha usado ${accionNombre}.`;
+  const estadoNames = (Array.isArray(estados) ? estados : [])
+    .map((e) => e && e.nombre)
+    .filter(Boolean);
+
+  const hayEstados = estadoNames.length > 0;
+  const estadosSingPlural =
+    estadoNames.length === 1 ? 'el estado' : 'los estados';
+  const estadosListado = estadoNames.join(', ');
+
+  const isObjeto = recurso.tipo === 'objeto';
+  const accionLower = accionNombre.toLowerCase();
+  const isPotionName =
+    accionLower.includes('poción') || accionLower.includes('pocion');
+
+  // 🔥 Cabecera amarilla (#C0A66C) - Indica la acción realizada
+  const headerYellow = isObjeto && isPotionName
+    ? `${actorNombre} usó ${accionNombre}`
+    : `${actorNombre} usó ${accionNombre}`;
 
   let detalle = '';
 
   if (esBenef) {
-    // Curaciones / buffs
+    // 🟢 BENEFICIOSO: Curaciones / buffs
     const curado =
       hp.curado ??
-      (typeof dano.variacionHP === 'number' &&
-      dano.variacionHP < 0
+      (typeof dano.variacionHP === 'number' && dano.variacionHP < 0
         ? Math.abs(dano.variacionHP)
         : 0) ??
       0;
 
-    if (curado > 0) {
-      detalle = `${actorNombre} curó ${curado} puntos de vida a ${targetNombre}.`;
+    // A quién se aplican los estados en buffs:
+    // - Ira / buffs de autoaplicación: normalmente al propio actor,
+    //   aunque el objetivo de HP o del "ataque" sea enemigo.
+    const estadoTargetsSelf =
+      hayEstados &&
+      !curado &&
+      (
+        !hp.objetivo || // sin objetivo claro
+        targetTipo === 'EN' || // target de HP es enemigo (como en Ira + ataque)
+        String(hp.objetivo) === String(actorId) // explícitamente a sí mismo
+      );
+
+    const receptorNombre = estadoTargetsSelf ? actorNombre : targetNombre;
+    const esSiMismo = String(hp.objetivo) === String(actorId) || estadoTargetsSelf;
+
+    // 🔥 Texto blanco (#F8E9D0) - Resultado de la acción beneficiosa
+    if (curado > 0 && hayEstados) {
+      const receptor = esSiMismo ? 'sí mismo' : receptorNombre;
+      detalle = `Curó ${curado} puntos de vida y aplicó ${estadosListado} a ${receptor}`;
+    } else if (curado > 0) {
+      const receptor = esSiMismo ? 'sí mismo' : receptorNombre;
+      detalle = `Curó ${curado} puntos de vida a ${receptor}`;
+    } else if (hayEstados) {
+      const receptor = esSiMismo ? 'sí mismo' : receptorNombre;
+      detalle = `Se aplicó ${estadosListado} a ${receptor}`;
     } else {
-      detalle = `${actorNombre} usó ${accionNombre}, pero no tuvo un efecto apreciable.`;
+      detalle = 'Se lo aplicó a sí mismo';
     }
   } else {
-    // Ataques
+    // ⚔️ ATAQUE: efectos dañinos
     let impacto = null;
 
     if (hitInfo && typeof hitInfo.impacto === 'boolean') {
@@ -154,22 +191,19 @@ function buildActionSummary(data, resolveName) {
             : 0) ??
           0;
 
-    const estadoNames = (Array.isArray(estados) ? estados : [])
-      .map((e) => e && e.nombre)
-      .filter(Boolean);
-
-    const estadosTxt =
-      estadoNames.length === 0
-        ? 'no impuso ningún estado.'
-        : `impuso los estados: ${estadoNames.join(', ')}.`;
-
+    // 🔥 Texto blanco (#F8E9D0) - Resultado del ataque
     if (!impacto) {
-      detalle = `${actorNombre} falló el ataque contra ${targetNombre}.`;
+      detalle = 'Pero no lo logró...';
     } else {
-      // Texto blanco: incluye el daño claro
-      detalle = `${actorNombre} consiguió el ataque e hizo ${
-        daniado || 0
-      } puntos de daño a ${targetNombre} y ${estadosTxt}`;
+      if (hayEstados && daniado > 0) {
+        detalle = `Hizo ${daniado} de daño con éxito y puso los estados de ${estadosListado}`;
+      } else if (daniado > 0) {
+        detalle = `Hizo ${daniado} de daño con éxito`;
+      } else if (hayEstados) {
+        detalle = `Aplicó con éxito los estados de ${estadosListado}`;
+      } else {
+        detalle = 'Conectó el ataque con éxito';
+      }
     }
   }
 
@@ -202,11 +236,13 @@ function chooseTargetFromOrden(orden, hpActual) {
   return pj ? pj.entidadId : null;
 }
 
-// Detecta si un objeto es poción
+// Detecta si un objeto es poción (usa datos planos y anidados en objeto)
 function isPotion(item) {
-  const txt = `${item?.tipo || ''} ${item?.categoria || ''} ${
-    item?.nombre || ''
-  }`.toLowerCase();
+  const baseName = item?.nombre || item?.objeto?.nombre || '';
+  const tipo = item?.tipo || item?.objeto?.tipo || '';
+  const categoria = item?.categoria || item?.objeto?.categoria || '';
+
+  const txt = `${tipo} ${categoria} ${baseName}`.toLowerCase();
   return txt.includes('poción') || txt.includes('pocion');
 }
 
@@ -355,6 +391,37 @@ export default function CombatView({
             const objetivoTipo =
               hpPayload.objetivoTipo || (data.isAI ? 'PJ' : 'EN');
             const hpKey = `${objetivoTipo}:${hpPayload.objetivo}`;
+            const objetivoId = hpPayload.objetivo;
+            
+            //   Recargar personaje desde DB si es PJ (para actualizar puntosGolpeActual)
+            if (objetivoTipo === 'PJ' && objetivoId) {
+              api.get(`/personaje/${objetivoId}`)
+                .then(res => {
+                  const pjData = res.data.personaje || res.data || null;
+                  if (pjData) {
+                    // Actualizar en participants para reflejar HP en UI
+                    setParticipants(prev => {
+                      return prev.map(p => {
+                        if (String(p.entidadId) === String(objetivoId) && p.tipo === 'PJ') {
+                          return { ...p, personaje: pjData };
+                        }
+                        return p;
+                      });
+                    });
+                    
+                    // Si es mi personaje, actualizar también myPersonaje
+                    if (String(objetivoId) === String(selectedActor)) {
+                      setMyPersonaje(pjData);
+                    }
+                    
+                    console.log(`[CombatView] ✅ Personaje ${pjData.nombre} recargado - HP: ${pjData.puntosGolpeActual}/${pjData.puntosGolpe}`);
+                  }
+                })
+                .catch(err => {
+                  console.error('[CombatView] Error recargando personaje:', err);
+                });
+            }
+            
             setHpActual((prev) => ({
               ...(prev || {}),
               [hpKey]: hpPayload.despues,
@@ -388,7 +455,7 @@ export default function CombatView({
     return () => {
       window.removeEventListener('combat_message', handleCombatMessage);
     };
-  }, [combateId, resolveName, onClose]);
+  }, [combateId, resolveName, onClose, myPersonajeId, selectedActor]); // 🔥 Agregar dependencias para recarga de personaje
 
   // Cargar datos participantes
   useEffect(() => {
@@ -593,6 +660,11 @@ export default function CombatView({
       return alert('No se pudo resolver tu personaje');
 
     try {
+      console.log('[CombatView] usando poción', {
+        objetoId,
+        turnoId: turnoActual.id,
+      });
+
       setLoading(true);
       const targetId =
         selectedActor || chooseTargetFromOrden(orden, hpActual);
@@ -899,10 +971,17 @@ export default function CombatView({
                   'PJ'
                 );
 
-                const hpKey = `PJ:${o.entidadId}`;
-                const currentHP = hpActual?.[hpKey] ?? 0;
-                const maxHP =
-                  hpMax?.[hpKey] ?? (currentHP || 1);
+                const participant = (participants || []).find(
+                  (p) =>
+                    String(p.entidadId) ===
+                      String(o.entidadId) &&
+                    String(p.tipo).toUpperCase() === 'PJ'
+                );
+                const pj = participant?.personaje || {};
+
+                // 🔥 Usar puntosGolpeActual del personaje (DB) en lugar del HP del combate
+                const currentHP = pj.puntosGolpeActual ?? 0;
+                const maxHP = pj.puntosGolpe ?? (currentHP || 1);
                 const pct =
                   maxHP > 0
                     ? Math.max(
@@ -918,13 +997,6 @@ export default function CombatView({
                   ? `/src/assets/personajes/${pjName}.png`
                   : null;
 
-                const participant = (participants || []).find(
-                  (p) =>
-                    String(p.entidadId) ===
-                      String(o.entidadId) &&
-                    String(p.tipo).toUpperCase() === 'PJ'
-                );
-                const pj = participant?.personaje || {};
                 const estadosActivos =
                   participant?.estadosActivos ||
                   pj.estadosActivos ||
@@ -1195,35 +1267,45 @@ function PotionsPanel({ personaje, disabled, onUsePotion }) {
             Sin pociones
           </div>
         ) : (
-          potions.map((it, idx) => (
-            <div
-              key={it.id || idx}
-              className={
-                'combat-inventory-item' +
-                (disabled ? ' is-disabled' : '')
-              }
-              onClick={() => {
-                if (!disabled) onUsePotion(it.id);
-              }}
-              title={`${it.nombre || 'Poción'} (x${
-                it.cantidad ?? 1
-              })`}
-            >
-              <span className="combat-potion-icon-wrapper">
-                <img
-                  src={`/src/assets/objetos/${
-                    it.nombre || 'Pocion'
-                  }.png`}
-                  alt={it.nombre || 'Poción'}
-                  className="combat-potion-icon"
-                  onError={(e) => {
-                    e.currentTarget.style.display =
-                      'none';
-                  }}
-                />
-              </span>
-            </div>
-          ))
+          potions.map((it, idx) => {
+            // usar objetoId si existe, si no id
+            const objetoId = it.objetoId ?? it.id;
+            const nombreObjeto =
+              it.nombre ||
+              it.objeto?.nombre ||
+              'Pocion';
+            const cantidad = it.cantidad ?? 1;
+
+            return (
+              <div
+                key={objetoId ?? idx}
+                className={
+                  'combat-inventory-item' +
+                  (disabled ? ' is-disabled' : '')
+                }
+                onClick={() => {
+                  if (!disabled && objetoId != null) {
+                    onUsePotion(objetoId);
+                  }
+                }}
+                title={`${nombreObjeto || 'Poción'} (x${
+                  cantidad
+                })`}
+              >
+                <span className="combat-potion-icon-wrapper">
+                  <img
+                    src={`/src/assets/objetos/${nombreObjeto}.png`}
+                    alt={nombreObjeto || 'Poción'}
+                    className="combat-potion-icon"
+                    onError={(e) => {
+                      e.currentTarget.style.display =
+                        'none';
+                    }}
+                  />
+                </span>
+              </div>
+            );
+          })
         )}
       </div>
     </div>

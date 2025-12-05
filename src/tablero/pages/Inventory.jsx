@@ -61,25 +61,53 @@ function xpThresholdForLevel(level) {
   return XP_BASE * (Math.pow(XP_GROWTH, lvl - 1) - 1);
 }
 
+// mismo algoritmo que en el modelo Personaje
+function levelFromExperienceFront(experiencia = 0) {
+  const totalXp = Math.max(0, Number(experiencia) || 0);
+  const maxLevel = XP_MAX_LEVEL;
+
+  for (let lvl = 1; lvl <= maxLevel; lvl++) {
+    const required = XP_BASE * (Math.pow(XP_GROWTH, lvl - 1) - 1);
+    const next = XP_BASE * (Math.pow(XP_GROWTH, lvl) - 1);
+    if (totalXp >= required && totalXp < next) return lvl;
+  }
+  return maxLevel;
+}
+
 function computeXpProgress(experiencia = 0, nivel = 1) {
-  const clampedLevel = Math.max(1, Math.min(nivel, XP_MAX_LEVEL));
+  const lvl = Math.max(1, Math.min(nivel, XP_MAX_LEVEL));
+  const totalXp = Math.max(0, Number(experiencia) || 0);
 
-  const next =
-    clampedLevel >= XP_MAX_LEVEL
-      ? experiencia
-      : xpThresholdForLevel(clampedLevel + 1);
+  // Si ya estás al máximo, barra siempre llena
+  if (lvl >= XP_MAX_LEVEL) {
+    return {
+      current: 0,
+      needed: 1,
+      pct: 100,
+    };
+  }
 
-  const neededTotal = Math.max(1, next);
-  const rawPct = neededTotal > 0 ? experiencia / neededTotal : 0;
-  const pct =
-    clampedLevel >= XP_MAX_LEVEL
-      ? 100
-      : Math.max(0, Math.min(100, Math.round(rawPct * 100)));
+  // XP total necesaria para EMPEZAR este nivel
+  const start = xpThresholdForLevel(lvl);
+
+  // XP total necesaria para EMPEZAR el siguiente nivel
+  const nextTotal = xpThresholdForLevel(lvl + 1);
+
+  // XP que llevas acumulada *dentro de este nivel*
+  const inLevel = Math.max(0, totalXp - start);
+
+  // XP que necesitas *en este nivel* para subir
+  const neededInLevel = Math.max(1, nextTotal - start);
+
+  const pct = Math.max(
+    0,
+    Math.min(100, Math.round((inLevel / neededInLevel) * 100))
+  );
 
   return {
-    current: experiencia,
-    needed: next,
-    pct,
+    current: inLevel, // lo que muestras a la izquierda
+    needed: neededInLevel, // lo que muestras a la derecha
+    pct, // porcentaje para la barra
   };
 }
 
@@ -112,6 +140,126 @@ function puntosAccionPorNivel(nivel) {
   return pa;
 }
 
+// =========================
+//   Derivados de stats (igual que backend)
+// =========================
+function baseModifier(score) {
+  const n = Number(score);
+  if (!Number.isFinite(n)) return 0;
+  return Math.floor((n - 10) / 2);
+}
+
+function hitPointsConfigForClassFrontend(claseRaw) {
+  const c = String(claseRaw || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+
+  if (c.includes("barbar")) return { base: 12, perLevel: 7 };
+  if (c.includes("guerr") || c.includes("paladin") || c.includes("explor"))
+    return { base: 10, perLevel: 6 };
+  if (
+    c.includes("bardo") ||
+    c.includes("clerig") ||
+    c.includes("druid") ||
+    c.includes("monje") ||
+    c.includes("picar") ||
+    c.includes("brujo")
+  )
+    return { base: 8, perLevel: 5 };
+  if (c.includes("hechic") || c.includes("mago"))
+    return { base: 6, perLevel: 4 };
+  return { base: 8, perLevel: 5 };
+}
+
+function equipArrayFrontend(v) {
+  return Array.isArray(v) ? v : [];
+}
+
+function computeDerivedStatsFromPJ(pj) {
+  if (!pj) {
+    return {
+      nivel: 1,
+      hpMax: 0,
+      modAtkFisico: 0,
+      modDanoFisico: 0,
+      modAtkMagico: 0,
+      modDanoMagico: 0,
+      modIniciativa: 0,
+      modTSFisica: 0,
+      modTSMagica: 0,
+      caFisica: 0,
+      caMagica: 0,
+    };
+  }
+
+  const experiencia = pj.experiencia ?? 0;
+  const nivel = levelFromExperienceFront(experiencia);
+
+  const modFuerza = baseModifier(pj.fuerza);
+  const modDestreza = baseModifier(pj.destreza);
+  const modConstitucion = baseModifier(pj.constitucion);
+  const modInteligencia = baseModifier(pj.inteligencia);
+  const modSabiduria = baseModifier(pj.sabiduria);
+  const modCarisma = baseModifier(pj.carisma);
+
+  const hpConf = hitPointsConfigForClassFrontend(pj.clase);
+  const constitucionBonus = modConstitucion * nivel;
+  const hpBase =
+    nivel > 0
+      ? hpConf.base + hpConf.perLevel * (nivel - 1) + constitucionBonus
+      : 0;
+
+  const equipSlots = [
+    equipArrayFrontend(pj.equipArmadura),
+    equipArrayFrontend(pj.equipEscudo),
+    equipArrayFrontend(pj.equipCasco),
+    equipArrayFrontend(pj.equipCapa),
+    equipArrayFrontend(pj.equipGuantes),
+    equipArrayFrontend(pj.equipBotas),
+    equipArrayFrontend(pj.equipCollar),
+    equipArrayFrontend(pj.equipAnillo1),
+    equipArrayFrontend(pj.equipAnillo2),
+  ];
+
+  let bonusCaFisica = 0;
+  let bonusCaMagica = 0;
+
+  for (const slot of equipSlots) {
+    for (const item of slot) {
+      if (!item) continue;
+      const defFis = Number(
+        item.defensaFisica ?? item.defensa_fisica ?? 0
+      );
+      const defMag = Number(
+        item.defensaMagica ?? item.defensa_magica ?? 0
+      );
+      if (Number.isFinite(defFis)) bonusCaFisica += defFis;
+      if (Number.isFinite(defMag)) bonusCaMagica += defMag;
+    }
+  }
+
+  const caFisica = modDestreza + bonusCaFisica;
+  const caMagica = modSabiduria + bonusCaMagica;
+
+  return {
+    nivel,
+    hpMax: hpBase,
+    modAtkFisico: modFuerza,
+    modDanoFisico: modFuerza,
+    modAtkMagico: modInteligencia,
+    modDanoMagico: modInteligencia,
+    modIniciativa: modDestreza,
+    modTSFisica: modConstitucion,
+    modTSMagica: modCarisma,
+    caFisica,
+    caMagica,
+  };
+}
+
+// =========================
+//   Helpers varios
+// =========================
 function capitalizeFirst(s) {
   const str = String(s || "").trim();
   if (!str) return "";
@@ -250,9 +398,19 @@ export default function Inventory({
   // =========================
   //   DERIVADOS DEL PJ
   // =========================
-  const nombrePersonaje = capitalizeFirst(pjSource.nombre || "Sin nombre");
-  const nivel = pjSource.nivel ?? personaje?.nivel ?? 1;
-  const experiencia = pjSource.experiencia ?? personaje?.experiencia ?? 0;
+  const derivedStats = useMemo(
+    () => computeDerivedStatsFromPJ(pjSource),
+    [pjSource]
+  );
+
+  const experiencia =
+    pjSource.experiencia ?? personaje?.experiencia ?? 0;
+  // nivel REAL calculado por experiencia (no confiamos en pjSource.nivel)
+  const nivel = derivedStats.nivel;
+
+  const nombrePersonaje = capitalizeFirst(
+    pjSource.nombre || "Sin nombre"
+  );
 
   const raza = capitalizeFirst(pjSource.raza || "—");
   const subraza = capitalizeFirst(pjSource.subraza || "—");
@@ -265,13 +423,23 @@ export default function Inventory({
 
   const xp = computeXpProgress(experiencia, nivel);
 
-  const hpMax = pjSource.puntosGolpe ?? personaje?.puntosGolpe ?? 0;
+  // Vida: usar puntosGolpeActual del backend (y puntosGolpe como máximo)
+  const hpMaxBackend =
+    pjSource.puntosGolpe ?? personaje?.puntosGolpe ?? 0;
+  const hpMax =
+    Number.isFinite(Number(hpMaxBackend)) && hpMaxBackend > 0
+      ? Number(hpMaxBackend)
+      : derivedStats.hpMax ?? 0;
+
+  const rawHpActual =
+    pjSource.puntosGolpeActual ??
+    pjSource.hpActual ??
+    personaje?.puntosGolpeActual ??
+    personaje?.hpActual;
+
   const hpActual =
-    pjSource.hpActual != null
-      ? pjSource.hpActual
-      : personaje?.hpActual != null
-      ? personaje.hpActual
-      : hpMax;
+    rawHpActual != null ? Number(rawHpActual) : hpMax;
+
   const hpPct =
     hpMax > 0 ? Math.max(0, Math.min(100, (hpActual / hpMax) * 100)) : 0;
 
@@ -304,7 +472,9 @@ export default function Inventory({
   const recursoCantidad = pjSource.recurso ?? 0;
   const recursoEsperado = recursosPorNivel(nivel);
 
-  const recursoIcon = recursoNombre ? findTipoIcon(recursoNombre) : null;
+  const recursoIcon = recursoNombre
+    ? findTipoIcon(recursoNombre)
+    : null;
 
   const paEsperados = puntosAccionPorNivel(nivel);
 
@@ -348,11 +518,14 @@ export default function Inventory({
       ? pjSource.equipArma[0]
       : null;
   const armaduraEquip =
-    Array.isArray(pjSource.equipArmadura) && pjSource.equipArmadura.length > 0
+    Array.isArray(pjSource.equipArmadura) &&
+    pjSource.equipArmadura.length > 0
       ? pjSource.equipArmadura[0]
       : null;
 
-  const armaIcon = armaEquip?.nombre ? findObjetoIcon(armaEquip.nombre) : null;
+  const armaIcon = armaEquip?.nombre
+    ? findObjetoIcon(armaEquip.nombre)
+    : null;
   const armaduraIcon = armaduraEquip?.nombre
     ? findObjetoIcon(armaduraEquip.nombre)
     : null;
@@ -379,13 +552,16 @@ export default function Inventory({
         : items) || [];
 
     return sourceItems
-      .map((o, idx) => {
+      .map((raw, idx) => {
+        // Soporta forma { objeto, cantidad } o forma plana
+        const o = raw.objeto || raw;
+
         const tipoRaw = String(o.tipo || "").trim();
 
         // Categorías estrictas según tipo
         // "Arma"       -> armas
         // "Armadura"   -> armadura
-        // "Poción"     -> pociones
+        // "Poción"/"Pocion" -> pociones
         // "Suministro" -> comida
         // "Recurso"    -> tesoros
         let categoria = null;
@@ -398,6 +574,7 @@ export default function Inventory({
             categoria = "armadura";
             break;
           case "Pocion":
+          case "Poción":
             categoria = "pociones";
             break;
           case "Suministro":
@@ -414,15 +591,15 @@ export default function Inventory({
         const icon = findObjetoIcon(o.nombre);
 
         return {
-          id: o.id ?? idx,
-          backendId: o.id ?? o.nombre ?? null,
+          id: o.id ?? raw.id ?? idx,
+          backendId: o.id ?? raw.id ?? o.nombre ?? null,
           nombre: o.nombre || "Sin nombre",
           categoria,
           icon,
           tipo: o.tipo || "",
           descripcion: o.descripcion || "",
-          danio: o.Danio || null,
-          tipoDanio: o.TipoDanio || null,
+          danio: o.danio ?? o.Danio ?? null,
+          tipoDanio: o.tipoDanio ?? o.TipoDanio ?? null,
           defensaFisica: o.defensaFisica ?? 0,
           defensaMagica: o.defensaMagica ?? 0,
           precioOro: o.precioOro ?? 0,
@@ -431,6 +608,7 @@ export default function Inventory({
           instrumentoTipo: o.instrumentoTipo ?? o.InstrumentoTipo ?? null,
           escudoTipo: o.escudoTipo ?? o.EscudoTipo ?? null,
           amuletoTipo: o.amuletoTipo ?? o.AmuletoTipo ?? null,
+          cantidad: raw.cantidad ?? 1,
         };
       })
       .filter(Boolean);
@@ -497,11 +675,17 @@ export default function Inventory({
         break;
       case "armadura":
         basicEquipable = true;
-        subtypeAllowed = isSubtypeAllowedFrontend(item.armaduraTipo, armaduras);
+        subtypeAllowed = isSubtypeAllowedFrontend(
+          item.armaduraTipo,
+          armaduras
+        );
         break;
       case "escudo":
         basicEquipable = true;
-        subtypeAllowed = isSubtypeAllowedFrontend(item.escudoTipo, escudos);
+        subtypeAllowed = isSubtypeAllowedFrontend(
+          item.escudoTipo,
+          escudos
+        );
         break;
       case "instrumento":
         basicEquipable = true;
@@ -546,7 +730,9 @@ export default function Inventory({
     return { canEquip: true, isEquipable: true };
   }
 
-  const equipInfo = selectedItem ? getEquipInfo(selectedItem, pjSource) : null;
+  const equipInfo = selectedItem
+    ? getEquipInfo(selectedItem, pjSource)
+    : null;
   const isSelectedItemEquipped =
     selectedItem && isItemAlreadyEquipped(selectedItem, pjSource);
 
@@ -811,8 +997,10 @@ export default function Inventory({
 
     if (kind === "arma") {
       const arma = item;
-      const danoIcon = arma.TipoDanio
-        ? findTipoIcon(arma.TipoDanio)
+      const danoTexto = arma.danio ?? arma.Danio ?? "-";
+      const tipoDanio = arma.tipoDanio ?? arma.TipoDanio ?? "-";
+      const danoIcon = tipoDanio
+        ? findTipoIcon(tipoDanio)
         : null;
 
       return (
@@ -828,7 +1016,7 @@ export default function Inventory({
           <div className="inventory-tooltip-row">
             <span className="inventory-tooltip-label">Daño:</span>
             <span className="inventory-tooltip-value">
-              {arma.Danio || "-"}
+              {danoTexto}
             </span>
           </div>
           <div className="inventory-tooltip-row">
@@ -840,10 +1028,10 @@ export default function Inventory({
                 <img
                   className="inventory-tooltip-damage-icon"
                   src={danoIcon}
-                  alt={arma.TipoDanio}
+                  alt={tipoDanio}
                 />
               )}
-              {arma.TipoDanio || "-"}
+              {tipoDanio}
             </span>
           </div>
 
@@ -983,7 +1171,8 @@ export default function Inventory({
                             Experiencia
                           </span>
                           <span className="inventory-bar-numbers">
-                            {xp.current.toFixed(0)} / {xp.needed.toFixed(0)}
+                            {xp.current.toFixed(0)} /{" "}
+                            {xp.needed.toFixed(0)}
                           </span>
                         </div>
                         <div className="inventory-bar inventory-bar-xp">
@@ -996,7 +1185,9 @@ export default function Inventory({
 
                       <div className="inventory-bar-group">
                         <div className="inventory-bar-text">
-                          <span className="inventory-bar-title">Vida</span>
+                          <span className="inventory-bar-title">
+                            Vida
+                          </span>
                           <span className="inventory-bar-numbers">
                             {hpActual} / {hpMax}
                           </span>
@@ -1050,7 +1241,8 @@ export default function Inventory({
                             <img
                               src={armaduraIcon}
                               alt={
-                                armaduraEquip?.nombre || "Armadura equipada"
+                                armaduraEquip?.nombre ||
+                                "Armadura equipada"
                               }
                             />
                           </div>
@@ -1072,7 +1264,9 @@ export default function Inventory({
                           <div className="inventory-resource-count">
                             ${oroCantidad}
                           </div>
-                          <div className="inventory-resource-label">Oro</div>
+                          <div className="inventory-resource-label">
+                            Oro
+                          </div>
                         </div>
                       </div>
 
@@ -1099,7 +1293,10 @@ export default function Inventory({
 
                       {/* Puntos de acción */}
                       {puntosAccion.map((pa) => (
-                        <div key={pa.nivelKey} className="inventory-res-line">
+                        <div
+                          key={pa.nivelKey}
+                          className="inventory-res-line"
+                        >
                           {pa.icon && (
                             <img
                               className="inventory-resource-icon"
@@ -1133,7 +1330,8 @@ export default function Inventory({
                   <div
                     key={s.key}
                     className={
-                      "stat-block" + (s.isMax ? " stat-block--max" : "")
+                      "stat-block" +
+                      (s.isMax ? " stat-block--max" : "")
                     }
                   >
                     <span className="stat-label">{s.key}</span>
@@ -1147,69 +1345,83 @@ export default function Inventory({
               <div className="inventory-phys-arcane-misc">
                 {/* Físico */}
                 <div className="inventory-phys-block">
-                  <span className="inventory-section-title">Físico</span>
+                  <span className="inventory-section-title">
+                    Físico
+                  </span>
                   <div className="inventory-line-vertical">
                     <span className="inventory-line-tag">MA:</span>
                     <span className="inventory-line-number">
-                      {formatSigned(pjSource.modAtkFisico ?? 0)}
+                      {formatSigned(
+                        derivedStats.modAtkFisico ?? 0
+                      )}
                     </span>
                   </div>
                   <div className="inventory-line-vertical">
                     <span className="inventory-line-tag">MD:</span>
                     <span className="inventory-line-number">
-                      {formatSigned(pjSource.modDanoFisico ?? 0)}
+                      {formatSigned(
+                        derivedStats.modDanoFisico ?? 0
+                      )}
                     </span>
                   </div>
                   <div className="inventory-line-vertical">
                     <span className="inventory-line-tag">MS:</span>
                     <span className="inventory-line-number">
                       {formatSigned(
-                        pjSource.modTiradaSalvacionFisica ?? 0
+                        derivedStats.modTSFisica ?? 0
                       )}
                     </span>
                   </div>
                   <div className="inventory-line-vertical">
                     <span className="inventory-line-tag">CA:</span>
                     <span className="inventory-line-number">
-                      {pjSource.caFisica ?? 0}
+                      {derivedStats.caFisica ?? 0}
                     </span>
                   </div>
                 </div>
 
                 {/* Arcano */}
                 <div className="inventory-phys-block">
-                  <span className="inventory-section-title">Arcano</span>
+                  <span className="inventory-section-title">
+                    Arcano
+                  </span>
                   <div className="inventory-line-vertical">
                     <span className="inventory-line-tag">MA:</span>
                     <span className="inventory-line-number">
-                      {formatSigned(pjSource.modAtkMagico ?? 0)}
+                      {formatSigned(
+                        derivedStats.modAtkMagico ?? 0
+                      )}
                     </span>
                   </div>
                   <div className="inventory-line-vertical">
                     <span className="inventory-line-tag">MD:</span>
                     <span className="inventory-line-number">
-                      {formatSigned(pjSource.modDanoMagico ?? 0)}
+                      {formatSigned(
+                        derivedStats.modDanoMagico ?? 0
+                      )}
                     </span>
                   </div>
                   <div className="inventory-line-vertical">
                     <span className="inventory-line-tag">MS:</span>
                     <span className="inventory-line-number">
                       {formatSigned(
-                        pjSource.modTiradaSalvacionMagica ?? 0
+                        derivedStats.modTSMagica ?? 0
                       )}
                     </span>
                   </div>
                   <div className="inventory-line-vertical">
                     <span className="inventory-line-tag">CA:</span>
                     <span className="inventory-line-number">
-                      {pjSource.caMagica ?? 0}
+                      {derivedStats.caMagica ?? 0}
                     </span>
                   </div>
                 </div>
 
                 {/* Misc */}
                 <div className="inventory-phys-block">
-                  <span className="inventory-section-title">Misc</span>
+                  <span className="inventory-section-title">
+                    Misc
+                  </span>
                   <div className="inventory-line-vertical">
                     <span className="inventory-line-tag">Vel:</span>
                     <span className="inventory-line-number">
@@ -1219,13 +1431,17 @@ export default function Inventory({
                   <div className="inventory-line-vertical">
                     <span className="inventory-line-tag">Ini:</span>
                     <span className="inventory-line-number">
-                      {formatSigned(pjSource.modIniciativa ?? 0)}
+                      {formatSigned(
+                        derivedStats.modIniciativa ?? 0
+                      )}
                     </span>
                   </div>
                 </div>
 
                 {errorPj && (
-                  <div className="inventory-error-text">{errorPj}</div>
+                  <div className="inventory-error-text">
+                    {errorPj}
+                  </div>
                 )}
               </div>
             </div>
@@ -1274,7 +1490,9 @@ export default function Inventory({
                         type="button"
                         className={
                           "inventory-slot" +
-                          (isSelected ? " inventory-slot--selected" : "")
+                          (isSelected
+                            ? " inventory-slot--selected"
+                            : "")
                         }
                         data-type={item.categoria}
                         title={item.nombre}
@@ -1294,7 +1512,9 @@ export default function Inventory({
                         {isSelected && (
                           <div
                             className="inventory-item-actions-card inventory-item-actions-card--inline"
-                            onMouseDown={(e) => e.stopPropagation()}
+                            onMouseDown={(e) =>
+                              e.stopPropagation()
+                            }
                             onClick={(e) => e.stopPropagation()}
                           >
                             {actionMode === "default" && (
@@ -1303,7 +1523,8 @@ export default function Inventory({
                                   type="button"
                                   className="inventory-action-btn inventory-action-btn--full"
                                   disabled={
-                                    isActionLoading || isSelectedItemEquipped
+                                    isActionLoading ||
+                                    isSelectedItemEquipped
                                   }
                                   onClick={() => {
                                     if (
@@ -1318,19 +1539,20 @@ export default function Inventory({
                                   Dar
                                 </button>
 
-                                {equipInfo && equipInfo.isEquipable && (
-                                  <button
-                                    type="button"
-                                    className="inventory-action-btn inventory-action-btn--full"
-                                    disabled={
-                                      isActionLoading ||
-                                      !equipInfo.canEquip
-                                    }
-                                    onClick={handleEquipItem}
-                                  >
-                                    Equipar
-                                  </button>
-                                )}
+                                {equipInfo &&
+                                  equipInfo.isEquipable && (
+                                    <button
+                                      type="button"
+                                      className="inventory-action-btn inventory-action-btn--full"
+                                      disabled={
+                                        isActionLoading ||
+                                        !equipInfo.canEquip
+                                      }
+                                      onClick={handleEquipItem}
+                                    >
+                                      Equipar
+                                    </button>
+                                  )}
                               </div>
                             )}
 
@@ -1343,7 +1565,9 @@ export default function Inventory({
                                       type="button"
                                       className="inventory-action-btn inventory-action-btn--full"
                                       disabled={isActionLoading}
-                                      onClick={() => handleGiveItemTo(m.id)}
+                                      onClick={() =>
+                                        handleGiveItemTo(m.id)
+                                      }
                                     >
                                       {m.nombre || `PJ #${m.id}`}
                                     </button>

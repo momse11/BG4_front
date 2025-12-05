@@ -129,9 +129,9 @@ html, body {
 }
 
 /* Enemigo centrado en su casilla */
-.combat-enemy-panel {
-  align-items: center;
-  justify-content: center;
+.combat-enemy-panel .combat-entity-sprite {
+  width: 160px;
+  height: 200px;
 }
 
 /* Entidad genérica (PJ o enemigo) */
