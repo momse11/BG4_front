@@ -393,7 +393,7 @@ export default function CombatView({
             const hpKey = `${objetivoTipo}:${hpPayload.objetivo}`;
             const objetivoId = hpPayload.objetivo;
             
-            //   Recargar personaje desde DB si es PJ (para actualizar puntosGolpeActual)
+            // � Recargar personaje desde DB si es PJ (para actualizar puntosGolpeActual)
             if (objetivoTipo === 'PJ' && objetivoId) {
               api.get(`/personaje/${objetivoId}`)
                 .then(res => {
@@ -774,8 +774,12 @@ export default function CombatView({
       String(turnoActual.actorTipo).toUpperCase() === 'EN';
   }
 
+  // 🔥 Verificar si el personaje está muerto (HP = 0)
+  const myCurrentHP = myPersonaje?.puntosGolpeActual ?? myPersonaje?.puntosGolpe ?? 0;
+  const isDead = myCurrentHP <= 0;
+
   const disabledActions =
-    loading || !isMyTurn || isEnemyTurn || turnoActual?.seHizoAccion;
+    loading || !isMyTurn || isEnemyTurn || turnoActual?.seHizoAccion || isDead;
 
   // Acciones del personaje
   const accionesPersonaje =
@@ -1198,6 +1202,24 @@ export default function CombatView({
               <div className="combat-panel-title">
                 Acciones
               </div>
+              
+              {/* ⚰️ Mensaje de muerte */}
+              {isDead && isMyTurn && (
+                <div style={{
+                  background: 'rgba(139, 0, 0, 0.8)',
+                  border: '2px solid #8B0000',
+                  padding: '8px',
+                  margin: '5px 0',
+                  borderRadius: '4px',
+                  color: '#FFD700',
+                  textAlign: 'center',
+                  fontWeight: 'bold',
+                  fontSize: '14px'
+                }}>
+                  ⚰️ Has muerto. Solo puedes pasar tu turno.
+                </div>
+              )}
+              
               <div className="combat-actions-row">
                 {actionSlots.map((slot) => (
                   <button
@@ -1245,8 +1267,9 @@ export default function CombatView({
             disabled={
               loading || !isMyTurn || isEnemyTurn
             }
+            title={isDead ? "Estás muerto. Solo puedes pasar el turno." : "Finalizar turno"}
           >
-            Fin turno
+            {isDead ? "⚰️ Pasar turno (Muerto)" : "Fin turno"}
           </button>
         </div>
       </div>
