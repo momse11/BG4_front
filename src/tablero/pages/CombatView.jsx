@@ -108,8 +108,6 @@ function buildActionSummary(data, resolveName) {
     .filter(Boolean);
 
   const hayEstados = estadoNames.length > 0;
-  const estadosSingPlural =
-    estadoNames.length === 1 ? 'el estado' : 'los estados';
   const estadosListado = estadoNames.join(', ');
 
   const isObjeto = recurso.tipo === 'objeto';
@@ -117,7 +115,7 @@ function buildActionSummary(data, resolveName) {
   const isPotionName =
     accionLower.includes('poción') || accionLower.includes('pocion');
 
-  // 🔥 Cabecera amarilla (#C0A66C) - Indica la acción realizada
+  // Cabecera amarilla
   const headerYellow = isObjeto && isPotionName
     ? `${actorNombre} usó ${accionNombre}`
     : `${actorNombre} usó ${accionNombre}`;
@@ -125,7 +123,7 @@ function buildActionSummary(data, resolveName) {
   let detalle = '';
 
   if (esBenef) {
-    // 🟢 BENEFICIOSO: Curaciones / buffs
+    // BENEFICIOSO
     const curado =
       hp.curado ??
       (typeof dano.variacionHP === 'number' && dano.variacionHP < 0
@@ -133,22 +131,18 @@ function buildActionSummary(data, resolveName) {
         : 0) ??
       0;
 
-    // A quién se aplican los estados en buffs:
-    // - Ira / buffs de autoaplicación: normalmente al propio actor,
-    //   aunque el objetivo de HP o del "ataque" sea enemigo.
     const estadoTargetsSelf =
       hayEstados &&
       !curado &&
       (
-        !hp.objetivo || // sin objetivo claro
-        targetTipo === 'EN' || // target de HP es enemigo (como en Ira + ataque)
-        String(hp.objetivo) === String(actorId) // explícitamente a sí mismo
+        !hp.objetivo ||
+        targetTipo === 'EN' ||
+        String(hp.objetivo) === String(actorId)
       );
 
     const receptorNombre = estadoTargetsSelf ? actorNombre : targetNombre;
     const esSiMismo = String(hp.objetivo) === String(actorId) || estadoTargetsSelf;
 
-    // 🔥 Texto blanco (#F8E9D0) - Resultado de la acción beneficiosa
     if (curado > 0 && hayEstados) {
       const receptor = esSiMismo ? 'sí mismo' : receptorNombre;
       detalle = `Curó ${curado} puntos de vida y aplicó ${estadosListado} a ${receptor}`;
@@ -162,7 +156,7 @@ function buildActionSummary(data, resolveName) {
       detalle = 'Se lo aplicó a sí mismo';
     }
   } else {
-    // ⚔️ ATAQUE: efectos dañinos
+    // ATAQUE
     let impacto = null;
 
     if (hitInfo && typeof hitInfo.impacto === 'boolean') {
@@ -191,7 +185,6 @@ function buildActionSummary(data, resolveName) {
             : 0) ??
           0;
 
-    // 🔥 Texto blanco (#F8E9D0) - Resultado del ataque
     if (!impacto) {
       detalle = 'Pero no lo logró...';
     } else {
@@ -351,7 +344,7 @@ export default function CombatView({
     [participants, orden, actoresResueltos]
   );
 
-  // Mantener el banner de acción (amarillo/blanco) visible al menos 3s
+  // Mantener el banner de acción visible al menos 3s
   useEffect(() => {
     if (!lastAction) return;
     const t = setTimeout(() => {
@@ -392,40 +385,99 @@ export default function CombatView({
               hpPayload.objetivoTipo || (data.isAI ? 'PJ' : 'EN');
             const hpKey = `${objetivoTipo}:${hpPayload.objetivo}`;
             const objetivoId = hpPayload.objetivo;
-            
-            //   Recargar personaje desde DB si es PJ (para actualizar puntosGolpeActual)
+
+            // Recargar personaje objetivo si es PJ (HP real)
             if (objetivoTipo === 'PJ' && objetivoId) {
-              api.get(`/personaje/${objetivoId}`)
-                .then(res => {
-                  const pjData = res.data.personaje || res.data || null;
+              api
+                .get(`/personaje/${objetivoId}`)
+                .then((res) => {
+                  const pjData =
+                    res.data.personaje || res.data || null;
                   if (pjData) {
-                    // Actualizar en participants para reflejar HP en UI
-                    setParticipants(prev => {
-                      return prev.map(p => {
-                        if (String(p.entidadId) === String(objetivoId) && p.tipo === 'PJ') {
+                    // Actualizar en participants
+                    setParticipants((prev) =>
+                      (prev || []).map((p) => {
+                        if (
+                          String(p.entidadId) ===
+                            String(objetivoId) &&
+                          String(p.tipo).toUpperCase() === 'PJ'
+                        ) {
                           return { ...p, personaje: pjData };
                         }
                         return p;
-                      });
-                    });
-                    
-                    // Si es mi personaje, actualizar también myPersonaje
-                    if (String(objetivoId) === String(selectedActor)) {
+                      })
+                    );
+
+                    // Si es mi PJ, actualizar también myPersonaje
+                    if (
+                      String(objetivoId) ===
+                      String(selectedActor)
+                    ) {
                       setMyPersonaje(pjData);
                     }
-                    
-                    console.log(`[CombatView] ✅ Personaje ${pjData.nombre} recargado - HP: ${pjData.puntosGolpeActual}/${pjData.puntosGolpe}`);
+
+                    console.log(
+                      `[CombatView] ✅ Personaje ${pjData.nombre} recargado - HP: ${pjData.puntosGolpeActual}/${pjData.puntosGolpe}`
+                    );
                   }
                 })
-                .catch(err => {
-                  console.error('[CombatView] Error recargando personaje:', err);
+                .catch((err) => {
+                  console.error(
+                    '[CombatView] Error recargando personaje objetivo:',
+                    err
+                  );
                 });
+
             }
-            
+
             setHpActual((prev) => ({
               ...(prev || {}),
               [hpKey]: hpPayload.despues,
             }));
+          }
+
+          // Recargar también el ACTOR si es PJ (recursos, acciones, etc.)
+          const actorId = data.actorId;
+          const actorTipo =
+            data.actorTipo || (data.isAI ? 'EN' : 'PJ');
+
+          if (
+            actorId &&
+            String(actorTipo).toUpperCase() === 'PJ'
+          ) {
+            api
+              .get(`/personaje/${actorId}`)
+              .then((res) => {
+                const pjData =
+                  res.data.personaje || res.data || null;
+                if (!pjData) return;
+
+                setParticipants((prev) =>
+                  (prev || []).map((p) => {
+                    if (
+                      String(p.entidadId) ===
+                        String(actorId) &&
+                      String(p.tipo).toUpperCase() === 'PJ'
+                    ) {
+                      return { ...p, personaje: pjData };
+                    }
+                    return p;
+                  })
+                );
+
+                // Si el actor soy yo, refrescar panel de acciones
+                if (
+                  String(actorId) === String(selectedActor)
+                ) {
+                  setMyPersonaje(pjData);
+                }
+              })
+              .catch((err) => {
+                console.error(
+                  '[CombatView] Error recargando actor PJ:',
+                  err
+                );
+              });
           }
 
           const summary = buildActionSummary(data, resolveName);
@@ -453,9 +505,12 @@ export default function CombatView({
 
     window.addEventListener('combat_message', handleCombatMessage);
     return () => {
-      window.removeEventListener('combat_message', handleCombatMessage);
+      window.removeEventListener(
+        'combat_message',
+        handleCombatMessage
+      );
     };
-  }, [combateId, resolveName, onClose, myPersonajeId, selectedActor]); // 🔥 Agregar dependencias para recarga de personaje
+  }, [combateId, resolveName, onClose, myPersonajeId, selectedActor]);
 
   // Cargar datos participantes
   useEffect(() => {
@@ -489,7 +544,8 @@ export default function CombatView({
             if (!nombre && Array.isArray(actoresResueltos)) {
               const found = actoresResueltos.find(
                 (a) =>
-                  String(a.tipo || '').toUpperCase() === 'EN' &&
+                  String(a.tipo || '').toUpperCase() ===
+                    'EN' &&
                   (String(a.entidadId) ===
                     String(item.entidadId) ||
                     String(a.id) ===
@@ -511,7 +567,7 @@ export default function CombatView({
 
       setParticipants(out);
 
-      // Inicializar HP máximo y actual para entidades que no lo tengan aún
+      // Inicializar HP máximo y actual
       const additions = [];
       for (const p of out) {
         const tipo = String(p.tipo || '').toUpperCase();
@@ -774,8 +830,15 @@ export default function CombatView({
       String(turnoActual.actorTipo).toUpperCase() === 'EN';
   }
 
-  const disabledActions =
-    loading || !isMyTurn || isEnemyTurn || turnoActual?.seHizoAccion;
+  // HP actual de mi personaje (desde DB)
+  const myCurrentHP = myPersonaje?.puntosGolpeActual ?? 0;
+
+  // Deshabilitado global: no es mi turno, es enemigo o está cargando
+  const globalDisabled =
+    loading || !isMyTurn || isEnemyTurn;
+
+  // ¿se usó ya una habilidad extra este turno?
+  const usedExtraAction = !!turnoActual?.seHizoAccionExtra;
 
   // Acciones del personaje
   const accionesPersonaje =
@@ -803,44 +866,121 @@ export default function CombatView({
 
   const nivelIcon = (n) => `/src/assets/combate/Nivel%20${n}.png`;
 
+  // Slots de acción: ligamos cada slot con su acción real (si existe)
   const actionSlots = [
     {
       id: 1,
       icon: '/src/assets/combate/Ataque.png',
       title: basicAttackName,
       habilidadNombre: basicAttackName,
+      type: 'basic',
+      actionData: null,
     },
     {
       id: 2,
       icon: `/src/assets/combate/${claseIconName}.png`,
       title: accionesPersonaje[0]?.nombre || 'Acción secundaria',
       habilidadNombre: accionesPersonaje[0]?.nombre || null,
+      type: 'ability',
+      actionData: accionesPersonaje[0] || null,
     },
     {
       id: 3,
       icon: nivelIcon(1),
       title: accionesPersonaje[1]?.nombre || 'Habilidad I',
       habilidadNombre: accionesPersonaje[1]?.nombre || null,
+      type: 'ability',
+      actionData: accionesPersonaje[1] || null,
     },
     {
       id: 4,
       icon: nivelIcon(2),
       title: accionesPersonaje[2]?.nombre || 'Habilidad II',
       habilidadNombre: accionesPersonaje[2]?.nombre || null,
+      type: 'ability',
+      actionData: accionesPersonaje[2] || null,
     },
     {
       id: 5,
       icon: nivelIcon(3),
       title: accionesPersonaje[3]?.nombre || 'Habilidad III',
       habilidadNombre: accionesPersonaje[3]?.nombre || null,
+      type: 'ability',
+      actionData: accionesPersonaje[3] || null,
     },
     {
       id: 6,
       icon: nivelIcon(4),
       title: accionesPersonaje[4]?.nombre || 'Habilidad IV',
       habilidadNombre: accionesPersonaje[4]?.nombre || null,
+      type: 'ability',
+      actionData: accionesPersonaje[4] || null,
     },
   ];
+
+  // ¿Se puede usar ese slot? (desbloqueo + recursos + acciones + acciones extra)
+  const canUseSlot = (slot) => {
+    if (globalDisabled) return false;
+    if (!myPersonaje) return false;
+
+    // 🔴 Sin puntos de golpe: no puede usar NINGUNA habilidad
+    if (myCurrentHP <= 0) return false;
+
+    // Acción básica: asume que consume 1 acción principal
+    if (slot.type === 'basic') {
+      const accionesDisponibles = myPersonaje.accion ?? 0;
+
+      // Si ya se hizo una acción principal en este turno, no dejar repetir
+      if (turnoActual?.seHizoAccion) return false;
+
+      return accionesDisponibles > 0;
+    }
+
+    const actionData = slot.actionData;
+    // No hay acción asociada: ese slot no está desbloqueado
+    if (!actionData) return false;
+
+    const pj = myPersonaje;
+
+    const reqRecurso = actionData.recurso ?? 0;
+    const reqAccion = actionData.accion ?? 0;
+    const reqAccionExtra = actionData.accionExtra ?? 0;
+    const reqPA1 = actionData.puntosAccionNivel1 ?? 0;
+    const reqPA2 = actionData.puntosAccionNivel2 ?? 0;
+    const reqPA3 = actionData.puntosAccionNivel3 ?? 0;
+    const reqPA4 = actionData.puntosAccionNivel4 ?? 0;
+
+    const pjRecurso = pj.recurso ?? 0;
+    const pjAccion = pj.accion ?? 0;
+    const pjAccionExtra = pj.accionExtra ?? 0;
+    const pjPA1 = pj.puntosAccionNivel1 ?? 0;
+    const pjPA2 = pj.puntosAccionNivel2 ?? 0;
+    const pjPA3 = pj.puntosAccionNivel3 ?? 0;
+    const pjPA4 = pj.puntosAccionNivel4 ?? 0;
+
+    // Si el turno ya marcó que se hizo acción principal,
+    // no permitimos acciones que gasten "accion"
+    if (turnoActual?.seHizoAccion && reqAccion > 0) {
+      return false;
+    }
+
+    if (pjRecurso < reqRecurso) return false;
+    if (pjAccion < reqAccion) return false;
+    if (pjAccionExtra < reqAccionExtra) return false;
+    if (pjPA1 < reqPA1) return false;
+    if (pjPA2 < reqPA2) return false;
+    if (pjPA3 < reqPA3) return false;
+    if (pjPA4 < reqPA4) return false;
+
+    return true;
+  };
+
+  // Pociones deshabilitadas si:
+  // - globalDisabled
+  // - HP <= 0
+  // - ya usó una habilidad extra este turno
+  const potionsDisabled =
+    globalDisabled || myCurrentHP <= 0 || usedExtraAction;
 
   // Party (máx 4) y orden escalonado (PJ del turno al lado derecho)
   const partyActorsRaw = (orden || [])
@@ -979,7 +1119,7 @@ export default function CombatView({
                 );
                 const pj = participant?.personaje || {};
 
-                // 🔥 Usar puntosGolpeActual del personaje (DB) en lugar del HP del combate
+                // Usamos puntosGolpeActual del personaje (DB)
                 const currentHP = pj.puntosGolpeActual ?? 0;
                 const maxHP = pj.puntosGolpe ?? (currentHP || 1);
                 const pct =
@@ -1199,41 +1339,48 @@ export default function CombatView({
                 Acciones
               </div>
               <div className="combat-actions-row">
-                {actionSlots.map((slot) => (
-                  <button
-                    key={slot.id}
-                    className="combat-action-button"
-                    disabled={disabledActions}
-                    onClick={() =>
-                      handleAction(slot.id)
-                    }
-                    title={
-                      slot.habilidadNombre ||
-                      slot.title
-                    }
-                  >
-                    {slot.icon ? (
-                      <img
-                        src={slot.icon}
-                        alt={slot.title}
-                        className="combat-action-icon"
-                      />
-                    ) : (
-                      <span className="combat-action-placeholder">
-                        ?
-                      </span>
-                    )}
-                  </button>
-                ))}
+                {actionSlots.map((slot) => {
+                  const slotEnabled = canUseSlot(slot);
+                  return (
+                    <button
+                      key={slot.id}
+                      className={
+                        'combat-action-button' +
+                        (!slotEnabled
+                          ? ' is-disabled'
+                          : '')
+                      }
+                      disabled={!slotEnabled}
+                      onClick={() => {
+                        if (!slotEnabled) return;
+                        handleAction(slot.id);
+                      }}
+                      title={
+                        slot.habilidadNombre ||
+                        slot.title
+                      }
+                    >
+                      {slot.icon ? (
+                        <img
+                          src={slot.icon}
+                          alt={slot.title}
+                          className="combat-action-icon"
+                        />
+                      ) : (
+                        <span className="combat-action-placeholder">
+                          ?
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
             {/* Panel pociones */}
             <PotionsPanel
               personaje={myPersonaje}
-              disabled={
-                loading || !isMyTurn || isEnemyTurn
-              }
+              disabled={potionsDisabled}
               onUsePotion={handleUsePotion}
             />
           </div>
@@ -1242,9 +1389,7 @@ export default function CombatView({
           <button
             className="combat-endturn-button"
             onClick={handleEndTurn}
-            disabled={
-              loading || !isMyTurn || isEnemyTurn
-            }
+            disabled={globalDisabled}
           >
             Fin turno
           </button>

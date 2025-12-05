@@ -355,7 +355,7 @@ html, body {
   gap: 6px;
 }
 
-/* Botones de acción: el icono es el botón (tamaño original) */
+/* Botones de acción: el icono es el botón */
 .combat-action-button {
   background-color: transparent;
   color: inherit;
@@ -381,10 +381,13 @@ html, body {
   transform: translateY(1px);
 }
 
-/* Iconos de acción a tamaño original */
-.combat-action-icon {
+/* Iconos de acción y pociones: MISMO tamaño */
+.combat-action-icon,
+.combat-potion-icon {
   display: block;
   image-rendering: pixelated;
+  width: 32px;
+  height: 32px;
 }
 
 .combat-action-placeholder {
@@ -426,15 +429,11 @@ html, body {
   color: #C0A66C;
 }
 
-/* Icono poción (tamaño original) */
+/* Icono poción */
 .combat-potion-icon-wrapper {
   display: flex;
   align-items: center;
   justify-content: center;
-}
-
-.combat-potion-icon {
-  image-rendering: pixelated;
 }
 
 /* Botón fin de turno (a la derecha, mismo alto) */
