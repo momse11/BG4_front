@@ -8,7 +8,7 @@ import Portada from '../assets/Portada.png'
 import '../assets/styles/landing.css'
 
 export default function LandingPage() {
-  const { user, logout, createPartida } = useContext(AuthContext)
+  const { user, logout, createPartida, isAdmin } = useContext(AuthContext)
   const navigate = useNavigate()
 
   // modal unirse
@@ -122,6 +122,9 @@ export default function LandingPage() {
           <button
             className="pixel-button"
             onClick={openCreateModal}
+            disabled={isAdmin}
+            title={isAdmin ? 'Los administradores no pueden crear partidas' : 'Crear partida'}
+            style={{ opacity: isAdmin ? 0.5 : 1, cursor: isAdmin ? 'not-allowed' : 'pointer' }}
           >
             Crear partida
           </button>
@@ -129,6 +132,9 @@ export default function LandingPage() {
           <button
             className="pixel-button"
             onClick={openJoinModal}
+            disabled={isAdmin}
+            title={isAdmin ? 'Los administradores no pueden unirse a partidas' : 'Unirse a partida'}
+            style={{ opacity: isAdmin ? 0.5 : 1, cursor: isAdmin ? 'not-allowed' : 'pointer' }}
           >
             Unirse a partida
           </button>
@@ -140,6 +146,15 @@ export default function LandingPage() {
             Cerrar sesión
           </button>
         </div>
+
+        {isAdmin && (
+          <button
+            className="pixel-button"
+            onClick={() => navigate('/admin/panel')}
+          >
+            Panel admin
+          </button>
+        )}
       </div>
 
       {/* Modal Crear Partida */}

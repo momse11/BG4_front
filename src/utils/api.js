@@ -14,9 +14,13 @@ const api = axios.create({
 // Agrega token JWT a cada request
 api.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem('token')
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`
+    // Admin token para rutas /admin toma prioridad si existe
+    const adminToken = localStorage.getItem('admin_token');
+    const token = localStorage.getItem('token');
+    if (config.url && config.url.startsWith('/admin') && adminToken) {
+      config.headers.Authorization = `Bearer ${adminToken}`;
+    } else if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
     }
     return config
   },
@@ -97,6 +101,27 @@ export const getClases = async () => {
 export const getPersonajesByClase = async (clase) => {
   const r = await api.get(`/personaje/clase/${encodeURIComponent(clase)}`)
   return r.data.personajes || []
+}
+
+// ADMIN APIs
+export const loginAdmin = async (credentials) => {
+  const response = await api.post('/admin/login', credentials);
+  const { access_token, admin } = response.data;
+  if (access_token) localStorage.setItem('admin_token', access_token);
+  return { token: access_token, admin };
+}
+
+export const logoutAdmin = () => {
+  localStorage.removeItem('admin_token');
+}
+
+export const getAdminUsers = async () => {
+  const r = await api.get('/users');
+  return r.data;
+}
+
+export const deleteUserAdmin = async (id) => {
+  await api.delete(`/admin/users/${id}`);
 }
 
 // WEBSOCKETS (DESPUES)
