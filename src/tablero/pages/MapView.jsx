@@ -276,6 +276,66 @@ export default function MapView({ partidaId, mapaId, personajesIds }) {
     return () => window.removeEventListener("combat_message", handleGameOver);
   }, [partidaId]);
 
+  // Listener para transport requests (emitido por CombatView cuando muere un enemigo especial)
+  useEffect(() => {
+    const handler = async (event) => {
+      const data = event.detail || {};
+      console.debug('[MapView] transport_party event received:', data);
+      const evtPartidaId = data.partidaId || data.partida_id || data.partida || null;
+      if (evtPartidaId == null || String(evtPartidaId) !== String(partidaId)) return;
+
+      const tileIncrement = Number(data.tileIncrement ?? 1);
+
+      try {
+        const currentCasilla = casillas.find(
+          (c) => Number(c.x) === Number(pos.x) && Number(c.y) === Number(pos.y)
+        );
+        if (!currentCasilla) {
+          console.warn('[MapView] transport_party: no se encontró casilla actual');
+          return;
+        }
+        const currentId = Number(currentCasilla.id);
+        const targetId = currentId + tileIncrement;
+        const target = casillas.find((c) => Number(c.id) === Number(targetId));
+        if (!target) {
+          console.warn('[MapView] transport_party: casilla destino no encontrada', targetId);
+          return;
+        }
+
+        console.log('[MapView] transport_party: moviendo party a casilla', targetId, target.x, target.y, 'jugadasCount:', (jugadas || []).length);
+
+        // Mover a cada jugador (jugadas contiene jugador_id)
+        for (const j of jugadas || []) {
+          try {
+            if (j.jugador_id == null) continue;
+            console.debug('[MapView] transport_party: moving jugador', j.jugador_id, '→', target.x, target.y);
+            try {
+              const res = await moveTo(j.jugador_id, target.x, target.y);
+              console.debug('[MapView] transport_party: moveTo result for', j.jugador_id, res);
+            } catch (moveErr) {
+              console.warn('[MapView] transport_party: moveTo failed for', j.jugador_id, moveErr?.response?.data || moveErr.message || moveErr);
+              // Fallback: actualizar UI localmente emitiendo jugada_moved para no depender del backend
+              try {
+                const moved = [{ personaje_id: j.jugador_id, x: target.x, y: target.y }];
+                window.dispatchEvent(new CustomEvent('jugada_moved', { detail: { moved_personajes: moved } }));
+                console.debug('[MapView] transport_party: dispatched jugada_moved fallback for', j.jugador_id);
+              } catch (e) {
+                console.error('[MapView] transport_party: failed to dispatch jugada_moved fallback', e);
+              }
+            }
+          } catch (e) {
+            console.warn('[MapView] transport_party: error moviendo jugador', j.jugador_id, e?.response?.data || e.message || e);
+          }
+        }
+      } catch (e) {
+        console.error('[MapView] transport_party handler error', e);
+      }
+    };
+
+    window.addEventListener('transport_party', handler);
+    return () => window.removeEventListener('transport_party', handler);
+  }, [casillas, pos, jugadas, partidaId, moveTo]);
+
   // 🎹 Toggle inventario con tecla I
   useEffect(() => {
     const handleKeyDown = (event) => {

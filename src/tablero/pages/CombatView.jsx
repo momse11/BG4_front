@@ -239,18 +239,73 @@ function isPotion(item) {
   return txt.includes('poción') || txt.includes('pocion');
 }
 
-// Helpers para tooltip de daño / stats / estados
+/* ====================== HELPERS TOOLTIP (DAÑO / ESTADOS / STATS) ====================== */
+
+// Icono para tipo de daño (carpeta /src/assets/daño/ con mismo nombre que el daño)
+function getDamageIconPath(tipo) {
+  const clean = String(tipo || '').trim();
+  if (!clean) return null;
+  const encoded = encodeURIComponent(clean);
+  return `/src/assets/daño/${encoded}.png`;
+}
+
+// Resistencias / debilidades / inmunidades con texto + iconos
 function renderDamageRowCombat(label, arr) {
   const list = Array.isArray(arr) ? arr.filter(Boolean) : [];
   if (!list.length) return null;
 
   return (
-    <p>
-      <strong>{label}:</strong> {list.join(', ')}
-    </p>
+    <>
+      <p style={{ color: '#C0A66C', marginTop: 4 }}>
+        <strong>{label}:</strong> {list.join(', ')}
+      </p>
+      <div className="character-tooltip-damage-row">
+        <div className="character-tooltip-damage-icons">
+          {list.map((tipo, idx) => {
+            const src = getDamageIconPath(tipo);
+            if (!src) return null;
+            return (
+              <span className="damage-icon-wrap" key={`${tipo}-${idx}`}>
+                <img
+                  src={src}
+                  alt={tipo}
+                  className="inventory-tooltip-damage-icon"
+                  onError={(e) => {
+                    e.currentTarget.style.display = 'none';
+                  }}
+                />
+              </span>
+            );
+          })}
+        </div>
+      </div>
+    </>
   );
 }
 
+// Lista de estados activos (amarillo)
+function renderEstadosCombat(estados) {
+  const list = Array.isArray(estados) ? estados : [];
+  if (!list.length) return null;
+
+  return (
+    <div className="character-tooltip-states" style={{ marginTop: 6 }}>
+      <p style={{ color: '#C0A66C' }}>
+        <strong>Estados:</strong>
+      </p>
+      <ul>
+        {list.map((e, idx) => (
+          <li key={e.id || e.nombre || idx} style={{ color: '#C0A66C' }}>
+            <strong>{e.nombre || 'Estado'}:</strong>{' '}
+            {e.descripcion || ''}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+// Stats al final: STR, DES, CON, INT, SAB, CAR (verde)
 function renderStatsLineCombat(p) {
   if (!p) return null;
   const hasAny =
@@ -264,33 +319,56 @@ function renderStatsLineCombat(p) {
   if (!hasAny) return null;
 
   return (
-    <p>
-      <strong>Stats:</strong>{' '}
-      FUE {p.fuerza ?? '-'} | DES {p.destreza ?? '-'} | CON{' '}
-      {p.constitucion ?? '-'} | INT {p.inteligencia ?? '-'} | SAB{' '}
-      {p.sabiduria ?? '-'} | CAR {p.carisma ?? '-'}
+    <p
+      className="character-tooltip-stats"
+      style={{ color: '#4A6931', marginTop: 6 }}
+    >
+      STR {p.fuerza ?? '-'}{'  '}
+      DES {p.destreza ?? '-'}{'  '}
+      CON {p.constitucion ?? '-'}{'  '}
+      INT {p.inteligencia ?? '-'}{'  '}
+      SAB {p.sabiduria ?? '-'}{'  '}
+      CAR {p.carisma ?? '-'}
     </p>
   );
 }
 
-function renderEstadosCombat(estados) {
-  const list = Array.isArray(estados) ? estados : [];
-  if (!list.length) return null;
+// Contenido común para tooltip de PJ y EN
+function TooltipContent({ data, estados }) {
+  if (!data) return null;
+
+  const nombre = data.nombre || data.name || 'Sin nombre';
+  const descripcion =
+    data.descripcion && String(data.descripcion).trim()
+      ? data.descripcion
+      : 'Sin descripción';
 
   return (
-    <div className="character-tooltip-states">
-      <p>
-        <strong>Estados:</strong>
+    <>
+      {/* NOMBRE en verde */}
+      <p style={{ color: '#4A6931', marginBottom: 4 }}>
+        <strong>{nombre}</strong>
       </p>
-      <ul>
-        {list.map((e, idx) => (
-          <li key={e.id || e.nombre || idx}>
-            <strong>{e.nombre || 'Estado'}:</strong>{' '}
-            {e.descripcion || ''}
-          </li>
-        ))}
-      </ul>
-    </div>
+
+      {/* DESCRIPCIÓN en blanco */}
+      <p
+        className="character-tooltip-desc"
+        style={{ color: '#F8E9D0', marginBottom: 6 }}
+      >
+        {descripcion}
+      </p>
+
+      {/* RESISTENCIAS / DEBILIDADES / INMUNIDADES en amarillo + iconos */}
+      {renderDamageRowCombat('Resistencias', data.resistencia)}
+      {renderDamageRowCombat('Debilidades', data.debilidad)}
+      {renderDamageRowCombat('Inmunidades', data.inmunidad)}
+
+      {/* ESTADOS */}
+      {renderEstadosCombat(estados)}
+
+      {/* STATS */}
+      {renderStatsLineCombat(data)}
+    </>
   );
 }
 
@@ -324,7 +402,7 @@ export default function CombatView({
   const [participants, setParticipants] = useState([]);
   const [turnoActual, setTurnoActual] = useState(initialTurno || null);
   const [hpActual, setHpActual] = useState(initialHp || {});
-  const [hpMax, setHpMax] = useState(initialHp || {}); // HP máximo fijo para cada entidad
+  const [hpMax, setHpMax] = useState(initialHp || {});
   const [selectedActor, setSelectedActor] = useState(null);
   const [myPersonajeId, setMyPersonajeId] = useState(null);
   const [myPersonaje, setMyPersonaje] = useState(null);
@@ -415,10 +493,6 @@ export default function CombatView({
                     ) {
                       setMyPersonaje(pjData);
                     }
-
-                    console.log(
-                      `[CombatView] ✅ Personaje ${pjData.nombre} recargado - HP: ${pjData.puntosGolpeActual}/${pjData.puntosGolpe}`
-                    );
                   }
                 })
                 .catch((err) => {
@@ -427,7 +501,6 @@ export default function CombatView({
                     err
                   );
                 });
-
             }
 
             setHpActual((prev) => ({
@@ -512,7 +585,7 @@ export default function CombatView({
     };
   }, [combateId, resolveName, onClose, myPersonajeId, selectedActor]);
 
-  // Cargar datos participantes
+  // Cargar datos participantes (PJ + EN con info completa)
   useEffect(() => {
     async function loadParticipants() {
       if (!orden || orden.length === 0) {
@@ -524,35 +597,56 @@ export default function CombatView({
 
       for (const item of orden) {
         const tipo = String(item.tipo || '').toUpperCase();
-        try {
-          if (tipo === 'PJ') {
-            try {
-              const r = await api.get(
-                `/personaje/${item.entidadId}`
-              );
-              const pj = r.data.personaje || r.data || null;
-              out.push({ ...item, personaje: pj });
-            } catch {
+
+        if (tipo === 'PJ') {
+          try {
+            const r = await api.get(`/personaje/${item.entidadId}`);
+            const pj = r.data.personaje || r.data || null;
+            out.push({ ...item, personaje: pj });
+          } catch {
+            out.push({
+              ...item,
+              personaje: { nombre: item.nombre },
+            });
+          }
+        } else {
+          // ENEMIGO — ¡OJO! ruta correcta /enemigos/:id
+          try {
+            const r = await api.get(`/enemigos/${item.entidadId}`);
+            const enemigo = r.data.enemigo || r.data || null;
+
+            if (enemigo) {
+              out.push({ ...item, personaje: enemigo });
+            } else {
+              let nombre = item.nombre || null;
+
+              if (!nombre && Array.isArray(actoresResueltos)) {
+                const found = actoresResueltos.find(
+                  (a) =>
+                    String(a.tipo || '').toUpperCase() === 'EN' &&
+                    (String(a.entidadId) === String(item.entidadId) ||
+                      String(a.id) === String(item.entidadId))
+                );
+                if (found) nombre = found.nombre || found.name || null;
+              }
+
               out.push({
                 ...item,
-                personaje: { nombre: item.nombre },
+                personaje: nombre ? { nombre } : null,
               });
             }
-          } else {
+          } catch {
+            // fallback si el GET falla
             let nombre = item.nombre || null;
 
             if (!nombre && Array.isArray(actoresResueltos)) {
               const found = actoresResueltos.find(
                 (a) =>
-                  String(a.tipo || '').toUpperCase() ===
-                    'EN' &&
-                  (String(a.entidadId) ===
-                    String(item.entidadId) ||
-                    String(a.id) ===
-                      String(item.entidadId))
+                  String(a.tipo || '').toUpperCase() === 'EN' &&
+                  (String(a.entidadId) === String(item.entidadId) ||
+                    String(a.id) === String(item.entidadId))
               );
-              if (found)
-                nombre = found.nombre || found.name || null;
+              if (found) nombre = found.nombre || found.name || null;
             }
 
             out.push({
@@ -560,8 +654,6 @@ export default function CombatView({
               personaje: nombre ? { nombre } : null,
             });
           }
-        } catch {
-          out.push({ ...item, personaje: null });
         }
       }
 
@@ -716,11 +808,6 @@ export default function CombatView({
       return alert('No se pudo resolver tu personaje');
 
     try {
-      console.log('[CombatView] usando poción', {
-        objetoId,
-        turnoId: turnoActual.id,
-      });
-
       setLoading(true);
       const targetId =
         selectedActor || chooseTargetFromOrden(orden, hpActual);
@@ -831,14 +918,20 @@ export default function CombatView({
   }
 
   // HP actual de mi personaje (desde DB)
-  const myCurrentHP = myPersonaje?.puntosGolpeActual ?? 0;
+  const myCurrentHP =
+    myPersonaje?.puntosGolpeActual ??
+    myPersonaje?.puntosGolpe ??
+    0;
+
+  // ¿está muerto?
+  const isDead = myCurrentHP <= 0;
+
+  // ¿se usó ya una acción extra este turno?
+  const usedExtraAction = !!turnoActual?.seHizoAccionExtra;
 
   // Deshabilitado global: no es mi turno, es enemigo o está cargando
   const globalDisabled =
     loading || !isMyTurn || isEnemyTurn;
-
-  // ¿se usó ya una habilidad extra este turno?
-  const usedExtraAction = !!turnoActual?.seHizoAccionExtra;
 
   // Acciones del personaje
   const accionesPersonaje =
@@ -866,7 +959,7 @@ export default function CombatView({
 
   const nivelIcon = (n) => `/src/assets/combate/Nivel%20${n}.png`;
 
-  // Slots de acción: ligamos cada slot con su acción real (si existe)
+  // Slots de acción
   const actionSlots = [
     {
       id: 1,
@@ -918,26 +1011,20 @@ export default function CombatView({
     },
   ];
 
-  // ¿Se puede usar ese slot? (desbloqueo + recursos + acciones + acciones extra)
+  // ¿Se puede usar ese slot?
   const canUseSlot = (slot) => {
     if (globalDisabled) return false;
     if (!myPersonaje) return false;
-
-    // 🔴 Sin puntos de golpe: no puede usar NINGUNA habilidad
     if (myCurrentHP <= 0) return false;
 
-    // Acción básica: asume que consume 1 acción principal
+    // Acción básica: consume 1 acción principal
     if (slot.type === 'basic') {
       const accionesDisponibles = myPersonaje.accion ?? 0;
-
-      // Si ya se hizo una acción principal en este turno, no dejar repetir
       if (turnoActual?.seHizoAccion) return false;
-
       return accionesDisponibles > 0;
     }
 
     const actionData = slot.actionData;
-    // No hay acción asociada: ese slot no está desbloqueado
     if (!actionData) return false;
 
     const pj = myPersonaje;
@@ -958,8 +1045,6 @@ export default function CombatView({
     const pjPA3 = pj.puntosAccionNivel3 ?? 0;
     const pjPA4 = pj.puntosAccionNivel4 ?? 0;
 
-    // Si el turno ya marcó que se hizo acción principal,
-    // no permitimos acciones que gasten "accion"
     if (turnoActual?.seHizoAccion && reqAccion > 0) {
       return false;
     }
@@ -975,14 +1060,11 @@ export default function CombatView({
     return true;
   };
 
-  // Pociones deshabilitadas si:
-  // - globalDisabled
-  // - HP <= 0
-  // - ya usó una habilidad extra este turno
+  // Pociones deshabilitadas si: globalDisabled, HP <= 0, o ya usó acción extra
   const potionsDisabled =
     globalDisabled || myCurrentHP <= 0 || usedExtraAction;
 
-  // Party (máx 4) y orden escalonado (PJ del turno al lado derecho)
+  // Party (máx 4) y orden escalonado
   const partyActorsRaw = (orden || [])
     .filter((o) => String(o.tipo).toUpperCase() === 'PJ')
     .slice(0, 4);
@@ -998,7 +1080,7 @@ export default function CombatView({
         Number(p.entidadId) === Number(turnoActual.actorId)
     );
     if (idx >= 0) {
-      // El que tiene el turno va al FINAL (lado derecho)
+      // El que tiene el turno va al final (lado derecho)
       partyActors = [
         ...partyActorsRaw.slice(idx + 1),
         ...partyActorsRaw.slice(0, idx + 1),
@@ -1062,7 +1144,8 @@ export default function CombatView({
 
   return (
     <div className="combat-overlay">
-      <div className="combat-modal">
+      {/* overflowY visible para que los popups no creen scroll ni se corten */}
+      <div className="combat-modal" style={{ overflowY: 'visible' }}>
         {/* Carteles superiores (verde, amarillo, blanco) */}
         <div className="combat-log-strip">
           <div className="combat-turn-banner">
@@ -1119,8 +1202,11 @@ export default function CombatView({
                 );
                 const pj = participant?.personaje || {};
 
-                // Usamos puntosGolpeActual del personaje (DB)
-                const currentHP = pj.puntosGolpeActual ?? 0;
+                // Usamos puntosGolpeActual (o PG total si no existe)
+                const currentHP =
+                  pj.puntosGolpeActual ??
+                  pj.puntosGolpe ??
+                  0;
                 const maxHP = pj.puntosGolpe ?? (currentHP || 1);
                 const pct =
                   maxHP > 0
@@ -1177,57 +1263,12 @@ export default function CombatView({
                       {currentHP} / {maxHP}
                     </div>
 
-                    {/* Tooltip de personaje */}
+                    {/* Tooltip de personaje (modelo unificado) */}
                     <div className="character-tooltip">
-                      <p>
-                        <strong>Nombre:</strong>{' '}
-                        {pj.nombre || formatName(pjName)}
-                      </p>
-                      <p>
-                        <strong>Raza:</strong>{' '}
-                        {pj.raza || '-'}{' '}
-                        {pj.subraza
-                          ? `${pj.subraza}`
-                          : ''}
-                      </p>
-                      <p>
-                        <strong>Subclase:</strong>{' '}
-                        {pj.subclase || '-'}
-                      </p>
-                      <p>
-                        <strong>Velocidad:</strong>{' '}
-                        {pj.velocidad ?? '-'}
-                      </p>
-                      <p>
-                        <strong>Origen:</strong>{' '}
-                        {pj.origen || '-'}
-                      </p>
-                      <p>
-                        <strong>Alineamiento:</strong>{' '}
-                        {pj.alineamiento || '-'}
-                      </p>
-                      <p className="character-tooltip-desc">
-                        {pj.descripcion &&
-                        pj.descripcion.trim()
-                          ? pj.descripcion
-                          : 'Sin descripción'}
-                      </p>
-
-                      {renderDamageRowCombat(
-                        'Debilidad',
-                        pj.debilidad
-                      )}
-                      {renderDamageRowCombat(
-                        'Resistencia',
-                        pj.resistencia
-                      )}
-                      {renderDamageRowCombat(
-                        'Inmunidad',
-                        pj.inmunidad
-                      )}
-
-                      {renderEstadosCombat(estadosActivos)}
-                      {renderStatsLineCombat(pj)}
+                      <TooltipContent
+                        data={pj}
+                        estados={estadosActivos}
+                      />
                     </div>
                   </div>
                 );
@@ -1282,44 +1323,12 @@ export default function CombatView({
                   {mainEnemyHP} / {mainEnemyMaxHP}
                 </div>
 
-                {/* Tooltip enemigo */}
-                <div className="character-tooltip">
-                  <p>
-                    <strong>Nombre:</strong>{' '}
-                    {enemyInfo.nombre || mainEnemyName}
-                  </p>
-                  <p>
-                    <strong>Raza:</strong>{' '}
-                    {enemyInfo.raza || '-'}
-                  </p>
-                  <p>
-                    <strong>Velocidad:</strong>{' '}
-                    {enemyInfo.velocidad ?? '-'}
-                  </p>
-                  <p className="character-tooltip-desc">
-                    {enemyInfo.descripcion &&
-                    enemyInfo.descripcion.trim()
-                      ? enemyInfo.descripcion
-                      : 'Sin descripción'}
-                  </p>
-
-                  {renderDamageRowCombat(
-                    'Debilidad',
-                    enemyInfo.debilidad
-                  )}
-                  {renderDamageRowCombat(
-                    'Resistencia',
-                    enemyInfo.resistencia
-                  )}
-                  {renderDamageRowCombat(
-                    'Inmunidad',
-                    enemyInfo.inmunidad
-                  )}
-
-                  {renderEstadosCombat(
-                    enemyEstadosActivos
-                  )}
-                  {renderStatsLineCombat(enemyInfo)}
+                {/* Tooltip enemigo (a la IZQUIERDA, con info de modelo Enemigo) */}
+                <div className="character-tooltip character-tooltip--enemy">
+                  <TooltipContent
+                    data={enemyInfo}
+                    estados={enemyEstadosActivos}
+                  />
                 </div>
               </div>
             ) : (
@@ -1338,27 +1347,57 @@ export default function CombatView({
               <div className="combat-panel-title">
                 Acciones
               </div>
+
               <div className="combat-actions-row">
                 {actionSlots.map((slot) => {
                   const slotEnabled = canUseSlot(slot);
+                  const actionData = slot.actionData;
+
+                  // Datos tooltip de acción
+                  const tooltipName = slot.habilidadNombre || slot.title;
+                  const tooltipDesc =
+                    actionData?.descripcion ||
+                    (slot.type === 'basic'
+                      ? `Ataque básico con ${nombreArma}`
+                      : '');
+                  const tooltipDanio =
+                    (slot.type === 'basic' &&
+                      armaEquipada?.danio) ||
+                    actionData?.danio ||
+                    null;
+                  const tooltipTipoDanio =
+                    (slot.type === 'basic' &&
+                      armaEquipada?.tipoDanio) ||
+                    actionData?.tipoDanio ||
+                    null;
+                  const tooltipPG =
+                    typeof actionData?.puntosGolpe === 'number' &&
+                    actionData.puntosGolpe !== 0
+                      ? actionData.puntosGolpe
+                      : null;
+
+                  const tooltipEstados =
+                    Array.isArray(actionData?.estados) &&
+                    actionData.estados.length
+                      ? actionData.estados
+                      : [];
+
+                  const tipoDanioIcon = tooltipTipoDanio
+                    ? getDamageIconPath(tooltipTipoDanio)
+                    : null;
+
                   return (
                     <button
                       key={slot.id}
                       className={
                         'combat-action-button' +
-                        (!slotEnabled
-                          ? ' is-disabled'
-                          : '')
+                        (!slotEnabled ? ' is-disabled' : '')
                       }
                       disabled={!slotEnabled}
                       onClick={() => {
                         if (!slotEnabled) return;
                         handleAction(slot.id);
                       }}
-                      title={
-                        slot.habilidadNombre ||
-                        slot.title
-                      }
                     >
                       {slot.icon ? (
                         <img
@@ -1371,6 +1410,93 @@ export default function CombatView({
                           ?
                         </span>
                       )}
+
+                      {/* Tooltip acción */}
+                      <div className="combat-action-tooltip">
+                        <div
+                          className="combat-tooltip-title"
+                          style={{ color: '#4A6931' }}
+                        >
+                          {tooltipName}
+                        </div>
+
+                        {tooltipDesc && (
+                          <div
+                            className="combat-tooltip-desc"
+                            style={{ color: '#F8E9D0' }}
+                          >
+                            {tooltipDesc}
+                          </div>
+                        )}
+
+                        {tooltipDanio && (
+                          <p style={{ color: '#C0A66C' }}>
+                            <span className="combat-tooltip-label">
+                              Daño:
+                            </span>{' '}
+                            <span className="combat-tooltip-value">
+                              {tooltipDanio}
+                            </span>
+                          </p>
+                        )}
+
+                        {tooltipTipoDanio && tipoDanioIcon && (
+                          <div className="character-tooltip-damage-row">
+                            <span
+                              className="combat-tooltip-label"
+                              style={{ color: '#C0A66C' }}
+                            >
+                              Tipo:
+                            </span>
+                            <div className="character-tooltip-damage-icons">
+                              <span className="damage-icon-wrap">
+                                <img
+                                  src={tipoDanioIcon}
+                                  alt={tooltipTipoDanio}
+                                  className="inventory-tooltip-damage-icon"
+                                  onError={(e) => {
+                                    e.currentTarget.style.display = 'none';
+                                  }}
+                                />
+                              </span>
+                            </div>
+                          </div>
+                        )}
+
+                        {tooltipPG && (
+                          <p style={{ color: '#C0A66C' }}>
+                            <span className="combat-tooltip-label">
+                              Puntos de golpe:
+                            </span>{' '}
+                            <span className="combat-tooltip-value">
+                              {tooltipPG > 0
+                                ? `+${tooltipPG}`
+                                : tooltipPG}
+                            </span>
+                          </p>
+                        )}
+
+                        {tooltipEstados.length > 0 && (
+                          <div className="combat-tooltip-states">
+                            <span
+                              className="combat-tooltip-label"
+                              style={{ color: '#C0A66C' }}
+                            >
+                              Estados:
+                            </span>
+                            <ul>
+                              {tooltipEstados.map((e, idx) => (
+                                <li
+                                  key={e.id || e.nombre || idx}
+                                  style={{ color: '#C0A66C' }}
+                                >
+                                  {e.nombre || 'Estado'}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                      </div>
                     </button>
                   );
                 })}
@@ -1389,9 +1515,10 @@ export default function CombatView({
           <button
             className="combat-endturn-button"
             onClick={handleEndTurn}
-            disabled={globalDisabled}
+            disabled={loading || !isMyTurn || isEnemyTurn}
+            title="Finalizar turno"
           >
-            Fin turno
+            {isDead ? 'Pasar turno' : 'Fin turno'}
           </button>
         </div>
       </div>
@@ -1404,50 +1531,169 @@ function PotionsPanel({ personaje, disabled, onUsePotion }) {
   const potions = inventario.filter(isPotion);
 
   return (
-    <div className="combat-inventory-panel">
+    <div
+      className="combat-inventory-panel"
+      style={{ overflow: 'visible' }} // para que el tooltip pueda salir
+    >
       <div className="combat-panel-title">Pociones</div>
-      <div className="combat-inventory-list">
+      <div
+        className="combat-inventory-list"
+        style={{ overflowX: 'auto', overflowY: 'visible' }}
+      >
         {potions.length === 0 ? (
           <div className="combat-inventory-empty">
             Sin pociones
           </div>
         ) : (
           potions.map((it, idx) => {
-            // usar objetoId si existe, si no id
             const objetoId = it.objetoId ?? it.id;
             const nombreObjeto =
               it.nombre ||
               it.objeto?.nombre ||
-              'Pocion';
+              'Poción';
             const cantidad = it.cantidad ?? 1;
+            const desc =
+              it.descripcion ||
+              it.objeto?.descripcion ||
+              '';
+
+            const danio =
+              it.danio || it.objeto?.danio || null;
+            const tipoDanio =
+              it.tipoDanio || it.objeto?.tipoDanio || null;
+            const pg =
+              typeof it.puntosGolpe === 'number'
+                ? it.puntosGolpe
+                : it.objeto?.puntosGolpe || 0;
+
+            const estados =
+              (Array.isArray(it.estados) && it.estados) ||
+              (Array.isArray(it.objeto?.estados) &&
+                it.objeto.estados) ||
+              [];
+
+            const tipoDanioIcon = tipoDanio
+              ? getDamageIconPath(tipoDanio)
+              : null;
 
             return (
               <div
                 key={objetoId ?? idx}
-                className={
-                  'combat-inventory-item' +
-                  (disabled ? ' is-disabled' : '')
-                }
+                className="combat-inventory-item"
                 onClick={() => {
                   if (!disabled && objetoId != null) {
                     onUsePotion(objetoId);
                   }
                 }}
-                title={`${nombreObjeto || 'Poción'} (x${
-                  cantidad
-                })`}
               >
                 <span className="combat-potion-icon-wrapper">
                   <img
                     src={`/src/assets/objetos/${nombreObjeto}.png`}
                     alt={nombreObjeto || 'Poción'}
                     className="combat-potion-icon"
+                    style={
+                      disabled
+                        ? { filter: 'grayscale(100%)', opacity: 0.5 }
+                        : undefined
+                    }
                     onError={(e) => {
                       e.currentTarget.style.display =
                         'none';
                     }}
                   />
                 </span>
+
+                {/* Tooltip poción con mismo estilo: nombre verde, desc blanca, resto amarillo */}
+                <div className="combat-action-tooltip">
+                  {/* Nombre */}
+                  <div
+                    className="combat-tooltip-title"
+                    style={{ color: '#4A6931' }}
+                  >
+                    <strong>{nombreObjeto}</strong> (x{cantidad})
+                  </div>
+
+                  {/* Descripción */}
+                  {desc && (
+                    <div
+                      className="combat-tooltip-desc"
+                      style={{ color: '#F8E9D0' }}
+                    >
+                      {desc}
+                    </div>
+                  )}
+
+                  {/* Daño numérico */}
+                  {danio && (
+                    <p style={{ color: '#C0A66C' }}>
+                      <span className="combat-tooltip-label">
+                        Daño:
+                      </span>{' '}
+                      <span className="combat-tooltip-value">
+                        {danio}
+                      </span>
+                    </p>
+                  )}
+
+                  {/* Tipo de daño con icono */}
+                  {tipoDanio && tipoDanioIcon && (
+                    <div className="character-tooltip-damage-row">
+                      <span
+                        className="combat-tooltip-label"
+                        style={{ color: '#C0A66C' }}
+                      >
+                        Tipo:
+                      </span>
+                      <div className="character-tooltip-damage-icons">
+                        <span className="damage-icon-wrap">
+                          <img
+                            src={tipoDanioIcon}
+                            alt={tipoDanio}
+                            className="inventory-tooltip-damage-icon"
+                            onError={(e) => {
+                              e.currentTarget.style.display =
+                                'none';
+                            }}
+                          />
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Curación / PG */}
+                  {pg !== 0 && (
+                    <p style={{ color: '#C0A66C' }}>
+                      <span className="combat-tooltip-label">
+                        Puntos de golpe:
+                      </span>{' '}
+                      <span className="combat-tooltip-value">
+                        {pg > 0 ? `+${pg}` : pg}
+                      </span>
+                    </p>
+                  )}
+
+                  {/* Estados que aplica la poción */}
+                  {Array.isArray(estados) && estados.length > 0 && (
+                    <div className="combat-tooltip-states">
+                      <span
+                        className="combat-tooltip-label"
+                        style={{ color: '#C0A66C' }}
+                      >
+                        Estados:
+                      </span>
+                      <ul>
+                        {estados.map((e, i) => (
+                          <li
+                            key={e.id || e.nombre || i}
+                            style={{ color: '#C0A66C' }}
+                          >
+                            {e.nombre || 'Estado'}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
               </div>
             );
           })
