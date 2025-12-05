@@ -9,6 +9,8 @@ import Lobby from '../partida/Lobby';
 import ProtectedRoute from './ProtectedRoute';
 import PartidaIndex from '../game/PartidaIndex';
 import PartidaEmpezada from '../partida/PartidaEmpezada';
+import AdminLogin from '../admin/AdminLogin';
+import AdminPanel from '../admin/AdminPanel';
 
 // Página del mapa
 import MapViewWrapper from '../tablero/pages/MapViewWrapper';
@@ -57,6 +59,8 @@ export default function Routing() {
             </ProtectedRoute>
           }
         />
+        <Route path="/admin/login" element={<AdminLogin />} />
+        <Route path="/admin/panel" element={<AdminPanel />} />
 
         {/* Ruta secundaria del lobby */}
         <Route

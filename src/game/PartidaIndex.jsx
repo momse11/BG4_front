@@ -6,7 +6,7 @@ import { useNavigate } from "react-router-dom";
 import "../assets/styles/crearpartida.css"; // Importar estilos
 
 export default function PartidaIndex() {
-  const { getPartidas, joinPartida } = useContext(AuthContext);
+const { getPartidas, joinPartida, isAdmin } = useContext(AuthContext);
   const [partidas, setPartidas] = useState([]);
   const [contraseñas, setContraseñas] = useState({});
   const [mensaje, setMensaje] = useState("");
