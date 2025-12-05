@@ -1,11 +1,19 @@
-import React, { useEffect, useState, useContext, useMemo } from 'react';
+// src/components/combate/CombatView.jsx
+import React, {
+  useEffect,
+  useState,
+  useContext,
+  useCallback,
+} from 'react';
 import api from '../../utils/api';
 import { AuthContext } from '../../auth/AuthProvider';
+import '../../assets/styles/CombatView.css';
 
-// Normaliza y elimina duplicados en una lista de actores
+// Normaliza orden e evita duplicados
 function normalizeOrden(list = []) {
   const seen = new Set();
   const out = [];
+
   for (const it of list || []) {
     if (!it) continue;
     const tipo = String(it.tipo || '').toUpperCase();
@@ -14,7 +22,7 @@ function normalizeOrden(list = []) {
     const key = `${tipo}:${id}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    // garantizar shape esperado
+
     out.push({
       tipo,
       entidadId: Number.isFinite(Number(id)) ? Number(id) : id,
@@ -23,353 +31,606 @@ function normalizeOrden(list = []) {
       nombre: it.nombre ?? it.name ?? null,
     });
   }
+
   return out;
 }
 
-function HpBar({ current, max }) {
-  const pct = max > 0 ? Math.max(0, Math.min(100, Math.round((current / max) * 100))) : 0;
+function formatName(name) {
+  if (!name || typeof name !== 'string') return '';
+  return name.charAt(0).toUpperCase() + name.slice(1);
+}
+
+// Resuelve el nombre de un actor
+function getActorDisplayName(
+  participants,
+  orden,
+  actoresResueltos,
+  actorId,
+  actorTipo
+) {
+  if (!actorId) return '';
+  const idStr = String(actorId);
+
+  const p = (participants || []).find(
+    (x) => String(x.entidadId) === idStr
+  );
+  if (p?.personaje?.nombre) return p.personaje.nombre;
+
+  const o = (orden || []).find(
+    (x) =>
+      String(x.entidadId) === idStr &&
+      (!actorTipo ||
+        String(x.tipo).toUpperCase() ===
+          String(actorTipo).toUpperCase())
+  );
+  if (o?.nombre) return o.nombre;
+
+  if (Array.isArray(actoresResueltos)) {
+    const d = actoresResueltos.find(
+      (a) =>
+        String(a.entidadId) === idStr &&
+        (!actorTipo ||
+          String(a.tipo).toUpperCase() ===
+            String(actorTipo).toUpperCase())
+    );
+    if (d?.nombre) return d.nombre;
+  }
+
+  return actorTipo === 'EN'
+    ? `Enemigo ${actorId}`
+    : `PJ ${actorId}`;
+}
+
+// Construye el texto bonito de la jugada
+function buildActionSummary(data, resolveName) {
+  const recurso = data.recurso || data.result?.recurso || {};
+  const hp = data.hp || data.result?.hp || {};
+  const dano = data.dano || data.result?.dano || {};
+  const hitInfo = data.hit || data.result?.hit || null;
+  const estados =
+    data.estadosAplicados || data.result?.estadosAplicados || [];
+  const esBenef = !!recurso.esBeneficioso;
+
+  // Deducción de tipo de actor si no viene
+  let actorTipoGuess = null;
+  if (data.isAI) actorTipoGuess = 'EN';
+
+  const actorNombre =
+    resolveName(data.actorId, actorTipoGuess) ||
+    (data.isAI ? 'El enemigo' : 'Alguien');
+
+  const targetTipo = hp.objetivoTipo || (data.isAI ? 'PJ' : null);
+  const targetNombre =
+    resolveName(hp.objetivo, targetTipo) || 'su objetivo';
+  const accionNombre = recurso.nombre || 'una acción';
+
+  // Cabecera amarilla
+  const headerYellow = `${actorNombre} ha usado ${accionNombre}.`;
+
+  let detalle = '';
+
+  if (esBenef) {
+    // Curaciones / buffs
+    const curado =
+      hp.curado ??
+      (typeof dano.variacionHP === 'number' &&
+      dano.variacionHP < 0
+        ? Math.abs(dano.variacionHP)
+        : 0) ??
+      0;
+
+    if (curado > 0) {
+      detalle = `${actorNombre} curó ${curado} puntos de vida a ${targetNombre}.`;
+    } else {
+      detalle = `${actorNombre} usó ${accionNombre}, pero no tuvo un efecto apreciable.`;
+    }
+  } else {
+    // Ataques
+    let impacto = null;
+
+    if (hitInfo && typeof hitInfo.impacto === 'boolean') {
+      impacto = hitInfo.impacto;
+    } else {
+      const variacion =
+        typeof dano.variacionHP === 'number'
+          ? dano.variacionHP
+          : 0;
+      const deltaHp =
+        typeof hp.antes === 'number' &&
+        typeof hp.despues === 'number'
+          ? hp.antes - hp.despues
+          : 0;
+      impacto = variacion > 0 || deltaHp > 0;
+    }
+
+    const daniado =
+      typeof hp.daniado === 'number'
+        ? hp.daniado
+        : dano.daniado ??
+          (dano.variacionHP > 0
+            ? dano.variacionHP
+            : hp.antes - hp.despues > 0
+            ? hp.antes - hp.despues
+            : 0) ??
+          0;
+
+    const estadoNames = (Array.isArray(estados) ? estados : [])
+      .map((e) => e && e.nombre)
+      .filter(Boolean);
+
+    const estadosTxt =
+      estadoNames.length === 0
+        ? 'no impuso ningún estado.'
+        : `impuso los estados: ${estadoNames.join(', ')}.`;
+
+    if (!impacto) {
+      detalle = `${actorNombre} falló el ataque contra ${targetNombre}.`;
+    } else {
+      // Texto blanco: incluye el daño claro
+      detalle = `${actorNombre} consiguió el ataque e hizo ${
+        daniado || 0
+      } puntos de daño a ${targetNombre} y ${estadosTxt}`;
+    }
+  }
+
+  return {
+    actorNombre,
+    targetNombre,
+    accionNombre,
+    headerYellow,
+    detalle,
+  };
+}
+
+// Target por defecto: primer EN vivo, si no, primer PJ
+function chooseTargetFromOrden(orden, hpActual) {
+  if (!Array.isArray(orden) || orden.length === 0) return null;
+  const hp = hpActual || {};
+
+  const en = orden.find(
+    (o) =>
+      String(o.tipo).toUpperCase() === 'EN' &&
+      (hp[`EN:${o.entidadId}`] ?? 1) > 0
+  );
+  if (en) return en.entidadId;
+
+  const pj = orden.find(
+    (o) =>
+      String(o.tipo).toUpperCase() === 'PJ' &&
+      (hp[`PJ:${o.entidadId}`] ?? 1) > 0
+  );
+  return pj ? pj.entidadId : null;
+}
+
+// Detecta si un objeto es poción
+function isPotion(item) {
+  const txt = `${item?.tipo || ''} ${item?.categoria || ''} ${
+    item?.nombre || ''
+  }`.toLowerCase();
+  return txt.includes('poción') || txt.includes('pocion');
+}
+
+// Helpers para tooltip de daño / stats / estados
+function renderDamageRowCombat(label, arr) {
+  const list = Array.isArray(arr) ? arr.filter(Boolean) : [];
+  if (!list.length) return null;
+
   return (
-    <div style={{ width: 140, background: '#222', border: '1px solid #444', height: 12, borderRadius: 6 }}>
-      <div style={{ width: `${pct}%`, height: '100%', background: '#e33', borderRadius: 6 }} />
+    <p>
+      <strong>{label}:</strong> {list.join(', ')}
+    </p>
+  );
+}
+
+function renderStatsLineCombat(p) {
+  if (!p) return null;
+  const hasAny =
+    typeof p.fuerza === 'number' ||
+    typeof p.destreza === 'number' ||
+    typeof p.constitucion === 'number' ||
+    typeof p.inteligencia === 'number' ||
+    typeof p.sabiduria === 'number' ||
+    typeof p.carisma === 'number';
+
+  if (!hasAny) return null;
+
+  return (
+    <p>
+      <strong>Stats:</strong>{' '}
+      FUE {p.fuerza ?? '-'} | DES {p.destreza ?? '-'} | CON{' '}
+      {p.constitucion ?? '-'} | INT {p.inteligencia ?? '-'} | SAB{' '}
+      {p.sabiduria ?? '-'} | CAR {p.carisma ?? '-'}
+    </p>
+  );
+}
+
+function renderEstadosCombat(estados) {
+  const list = Array.isArray(estados) ? estados : [];
+  if (!list.length) return null;
+
+  return (
+    <div className="character-tooltip-states">
+      <p>
+        <strong>Estados:</strong>
+      </p>
+      <ul>
+        {list.map((e, idx) => (
+          <li key={e.id || e.nombre || idx}>
+            <strong>{e.nombre || 'Estado'}:</strong>{' '}
+            {e.descripcion || ''}
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
 
-export default function CombatView({ 
-  partidaId, 
-  combateId, 
-  initialCombate, 
+export default function CombatView({
+  partidaId,
+  combateId,
+  initialCombate,
   initialActores,
-  jugadores: jugadoresProp, // 🔥 Recibir jugadores desde MapView
-  onClose 
+  jugadores: jugadoresProp,
+  onClose,
 }) {
-  // CombatView ahora SOLO funciona como overlay - requiere props
   if (!partidaId || !combateId) {
-    return <div style={{ color: 'white', padding: 20 }}>Error: CombatView requiere partidaId y combateId</div>;
+    return (
+      <div className="combat-overlay-error">
+        Error: CombatView requiere partidaId y combateId
+      </div>
+    );
   }
-  
+
   const { user } = useContext(AuthContext);
-  
-  // 🔥 Usar jugadores de props (vienen de MapView que tiene el WebSocket activo)
   const jugadores = jugadoresProp || [];
-  
-  // Debug: Log cuando cambian los jugadores
-  useEffect(() => {
-    console.log('[CombatView] 🔄 jugadores desde props:', jugadores?.length);
-  }, [jugadores]);
-  
-  // Inicializar estado desde props (initialCombate siempre viene del overlay)
-  const initialOrden = normalizeOrden(initialCombate?.orden || initialCombate?.ordenIniciativa || []);
+
+  const initialOrden = normalizeOrden(
+    initialCombate?.orden || initialCombate?.ordenIniciativa || []
+  );
   const initialTurno = initialCombate?.turnoActual || null;
   const initialHp = initialCombate?.hpActual || {};
-  
-  if (initialTurno) {
-    console.log('[CombatView] 🔥 turnoActual recibido:', JSON.stringify(initialTurno));
-  }
-  console.log('[CombatView] 🔥 orden inicial:', JSON.stringify(initialOrden.map(o => ({ tipo: o.tipo, entidadId: o.entidadId }))));
 
-  const [combate, setCombate] = useState(initialCombate || null);
+  const [combate] = useState(initialCombate || null);
   const [orden, setOrden] = useState(initialOrden || []);
-  const [participants, setParticipants] = useState([]); // fetched personaje data
+  const [participants, setParticipants] = useState([]);
   const [turnoActual, setTurnoActual] = useState(initialTurno || null);
   const [hpActual, setHpActual] = useState(initialHp || {});
+  const [hpMax, setHpMax] = useState(initialHp || {}); // HP máximo fijo para cada entidad
   const [selectedActor, setSelectedActor] = useState(null);
-  const [myPersonajeId, setMyPersonajeId] = useState(null); // 🔥 ID del personaje del jugador actual
-  const [myPersonaje, setMyPersonaje] = useState(null); // 🔥 Datos completos del personaje del jugador actual
+  const [myPersonajeId, setMyPersonajeId] = useState(null);
+  const [myPersonaje, setMyPersonaje] = useState(null);
+  const [actoresResueltos] = useState(initialActores || []);
   const [loading, setLoading] = useState(false);
-  const [debugOpen, setDebugOpen] = useState(true);
-  const [debugActors, setDebugActors] = useState(initialActores || []);
-  const [hydrated, setHydrated] = useState(true); // Ya está hidratado desde props
+  const [lastAction, setLastAction] = useState(null);
 
-  // 🔥 Escuchar eventos de combate desde el WebSocket de usePartidaWS (MapView)
-  // CombatView es un OVERLAY sin su propio WebSocket, solo escucha eventos emitidos por MapView
+  const resolveName = useCallback(
+    (id, tipoHint) =>
+      getActorDisplayName(
+        participants,
+        orden,
+        actoresResueltos,
+        id,
+        tipoHint
+      ),
+    [participants, orden, actoresResueltos]
+  );
+
+  // Mantener el banner de acción (amarillo/blanco) visible al menos 3s
+  useEffect(() => {
+    if (!lastAction) return;
+    const t = setTimeout(() => {
+      setLastAction(null);
+    }, 3000);
+    return () => clearTimeout(t);
+  }, [lastAction]);
+
+  // Listener de eventos de combate
   useEffect(() => {
     const handleCombatMessage = (event) => {
       try {
         const data = event.detail;
-        console.debug('[CombatView] 🔥 combat_message event:', data.type, data);
-        
-        if (data.type === 'COMBAT_TURN_CHANGED' && String(data.combateId) === String(combateId)) {
-          // Actualizar turno actual y HP cuando cambia el turno
+        if (String(data.combateId) !== String(combateId)) return;
+
+        if (data.type === 'COMBAT_TURN_CHANGED') {
           const nuevoTurno = data.turnoActual || data.turno;
           if (nuevoTurno) {
-            console.log('[CombatView] 🔄 Actualizando turno:', {
-              anterior: turnoActual,
-              nuevo: nuevoTurno,
-              actorId: nuevoTurno.actorId,
-              actorTipo: nuevoTurno.actorTipo
-            });
             setTurnoActual(nuevoTurno);
           }
           if (data.hpActual) {
             setHpActual(data.hpActual);
           }
           if (data.orden) {
-            console.log('[CombatView] 🔄 Actualizando orden:', data.orden);
-            setOrden(data.orden);
+            setOrden(normalizeOrden(data.orden));
           }
         }
-        
-        if (data.type === 'COMBAT_ACTION' && String(data.combateId) === String(combateId)) {
-          // Actualizar HP cuando hay una acción (la estructura es data.hp, no data.result.hp)
-          if (data.hp && data.hp.objetivo != null && data.hp.despues != null) {
-            // 🔥 Construir clave usando "tipo:id" desde objetivoTipo
-            const hpKey = `${data.hp.objetivoTipo || 'PJ'}:${data.hp.objetivo}`;
-            console.log('[CombatView] 💥 Actualizando HP:', hpKey, '→', data.hp.despues);
+
+        if (data.type === 'COMBAT_ACTION') {
+          // Actualizar HP local
+          const hpPayload = data.hp || data.result?.hp;
+          if (
+            hpPayload &&
+            hpPayload.objetivo != null &&
+            hpPayload.despues != null
+          ) {
+            const objetivoTipo =
+              hpPayload.objetivoTipo || (data.isAI ? 'PJ' : 'EN');
+            const hpKey = `${objetivoTipo}:${hpPayload.objetivo}`;
             setHpActual((prev) => ({
-              ...prev,
-              [hpKey]: data.hp.despues,
+              ...(prev || {}),
+              [hpKey]: hpPayload.despues,
             }));
           }
-          console.log('[CombatView] Acción de combate:', data.isAI ? 'IA' : 'Jugador', data);
+
+          const summary = buildActionSummary(data, resolveName);
+          setLastAction(summary);
         }
-        
-        if (data.type === 'COMBAT_TURN_UPDATED' && String(data.combateId) === String(combateId)) {
-          // Actualizar estado del turno (seHizoAccion, seHizoAccionExtra) para deshabilitar botones
+
+        if (data.type === 'COMBAT_TURN_UPDATED') {
           if (data.turnoActual) {
-            console.log('[CombatView] 🔄 Turno actualizado - seHizoAccion:', data.turnoActual.seHizoAccion, 'seHizoAccionExtra:', data.turnoActual.seHizoAccionExtra);
             setTurnoActual(data.turnoActual);
           }
         }
-        
-        if (data.type === 'COMBAT_ENDED' && String(data.combateId) === String(combateId)) {
-          console.log('[CombatView] 🏆 Combate finalizado:', data);
-          
-          // Mostrar recompensas si hay victoria
-          if (data.resultado === 'victoria' && data.recompensas) {
-            const { oroTotal, experienciaTotal, porJugador } = data.recompensas;
-            const miRecompensa = porJugador?.[myPersonajeId];
-            
-            if (miRecompensa) {
-              console.log('[CombatView] 🎉 Recompensas recibidas:', miRecompensa);
-              
-              // Mostrar notificación de recompensas (puedes personalizar esto)
-              const mensaje = `¡Victoria! Recompensas: +${miRecompensa.oroGanado} oro, +${miRecompensa.experienciaGanada} XP`;
-              alert(mensaje); // TODO: Reemplazar con notificación bonita
-            }
-            
-            console.log('[CombatView] 💰 Recompensas totales del combate:', {
-              oro: oroTotal,
-              experiencia: experienciaTotal,
-              jugadores: Object.keys(porJugador).length
-            });
-          }
-          
-          // Cerrar overlay después de mostrar recompensas
+
+        if (data.type === 'COMBAT_ENDED') {
           setTimeout(() => {
             if (onClose) onClose();
-          }, 3000); // Esperar 3 segundos antes de cerrar
+          }, 3000);
         }
       } catch (e) {
-        console.error('[CombatView] Error procesando combat_message:', e);
+        console.error(
+          '[CombatView] Error procesando combat_message:',
+          e
+        );
       }
     };
-    
+
     window.addEventListener('combat_message', handleCombatMessage);
-    return () => window.removeEventListener('combat_message', handleCombatMessage);
-  }, [combateId, turnoActual, myPersonajeId, onClose]);
+    return () => {
+      window.removeEventListener('combat_message', handleCombatMessage);
+    };
+  }, [combateId, resolveName, onClose]);
 
-    // Si el WS guardó payload del combate en sessionStorage, úsalo al montar
+  // Cargar datos participantes
   useEffect(() => {
-    // REMOVIDO: Ya no cargamos desde localStorage ni BroadcastChannel
-    // CombatView siempre recibe initialCombate desde MapView via props
-    console.debug('[CombatView] Inicializado con combate:', combateId);
-  }, [combateId]);
-
-  useEffect(() => {
-    // si no tenemos payload inicial, intentar cargar vía API (no implementado en backend)
-    if (!combate && !initial) {
-      console.warn('No hay datos de combate en state; intenta abrir desde la creación del combate.');
-    }
-    // si tenemos orden, intentar cargar datos de personajes para mostrar sprites/retratos/inventario
     async function loadParticipants() {
       if (!orden || orden.length === 0) {
         setParticipants([]);
         return;
       }
+
       const out = [];
+
       for (const item of orden) {
+        const tipo = String(item.tipo || '').toUpperCase();
         try {
-          const tipo = String(item.tipo || '').toUpperCase();
           if (tipo === 'PJ') {
-            // 🔥 Cargar datos completos del personaje de la DB para inventario/acciones
             try {
-              const r = await api.get(`/personaje/${item.entidadId}`);
+              const r = await api.get(
+                `/personaje/${item.entidadId}`
+              );
               const pj = r.data.personaje || r.data || null;
               out.push({ ...item, personaje: pj });
-            } catch (e) {
-              console.warn('[loadParticipants] Error cargando PJ', item.entidadId, e);
-              out.push({ ...item, personaje: { nombre: item.nombre } });
+            } catch {
+              out.push({
+                ...item,
+                personaje: { nombre: item.nombre },
+              });
             }
           } else {
-            // EN: intentar obtener nombre desde debugActors (actores resueltos enviados por backend)
             let nombre = item.nombre || null;
-            if (!nombre && Array.isArray(debugActors)) {
-              console.log('[loadParticipants] 🔍 Buscando enemigo EN:', item.entidadId, 'en debugActors:', debugActors);
-              // 🔥 Filtrar por tipo Y entidadId para evitar confusión entre PJ:1 y EN:1
-              const found = debugActors.find(a => 
-                String(a.tipo || '').toUpperCase() === 'EN' && 
-                (String(a.entidadId) === String(item.entidadId) || String(a.id) === String(item.entidadId))
+
+            if (!nombre && Array.isArray(actoresResueltos)) {
+              const found = actoresResueltos.find(
+                (a) =>
+                  String(a.tipo || '').toUpperCase() === 'EN' &&
+                  (String(a.entidadId) ===
+                    String(item.entidadId) ||
+                    String(a.id) ===
+                      String(item.entidadId))
               );
-              console.log('[loadParticipants] ✅ Enemigo encontrado:', found);
-              if (found) nombre = found.nombre || found.name || null;
+              if (found)
+                nombre = found.nombre || found.name || null;
             }
-            out.push({ ...item, personaje: nombre ? { nombre } : null });
+
+            out.push({
+              ...item,
+              personaje: nombre ? { nombre } : null,
+            });
           }
-        } catch (e) {
-          console.warn('No se pudo cargar personaje', item.entidadId, e);
+        } catch {
           out.push({ ...item, personaje: null });
         }
       }
+
       setParticipants(out);
-      // Asegurar hpActual para todos: si faltan valores, inicializar con puntos de golpe máximos
-      try {
-        setHpActual((prev) => {
-          const copy = { ...(prev || {}) };
-          for (const p of out) {
-            try {
-              // 🔥 Usar formato "tipo:id" para claves de HP
-              const tipo = String((p || {}).tipo || '').toUpperCase();
-              const hpKey = `${tipo}:${p.entidadId}`;
-              
-              if (copy[hpKey] == null) {
-                const maxHp = p.personaje?.puntosGolpe ?? p.personaje?.hp ?? 10;
-                copy[hpKey] = maxHp;
-              }
-            } catch (e) { /* noop */ }
+
+      // Inicializar HP máximo y actual para entidades que no lo tengan aún
+      const additions = [];
+      for (const p of out) {
+        const tipo = String(p.tipo || '').toUpperCase();
+        const hpKey = `${tipo}:${p.entidadId}`;
+        const maxHp =
+          p.personaje?.puntosGolpe ??
+          p.personaje?.hp ??
+          (initialHp?.[hpKey] ?? 10);
+
+        additions.push({ hpKey, maxHp });
+      }
+
+      setHpMax((prev) => {
+        const copy = { ...(prev || {}) };
+        for (const { hpKey, maxHp } of additions) {
+          if (copy[hpKey] == null) {
+            copy[hpKey] = maxHp;
           }
-          return copy;
-        });
-      } catch (e) { /* noop */ }
+        }
+        return copy;
+      });
+
+      setHpActual((prev) => {
+        const copy = { ...(prev || {}) };
+        for (const { hpKey, maxHp } of additions) {
+          if (copy[hpKey] == null) {
+            copy[hpKey] = maxHp;
+          }
+        }
+        return copy;
+      });
     }
 
     loadParticipants();
-  }, [orden, combate]);
+  }, [orden, actoresResueltos, initialHp]);
 
-  // efecto para sincronizar debugActors cuando se actualiza la navigation state
+  // Resolver mi personaje
   useEffect(() => {
-    if (location.state?.actores) setDebugActors(location.state.actores);
-  }, [location.state]);
-
-  // 🔥 Identificar mi personaje usando los datos del WebSocket (jugadores)
-  useEffect(() => {
-    if (!user || !orden || orden.length === 0 || !jugadores || jugadores.length === 0) {
-      console.warn('[CombatView] Falta user, orden o jugadores para resolver personaje');
-      return;
-    }
-    
-    // 🔥 Buscar mi usuario en la lista de jugadores
-    const myJugador = jugadores.find(j => Number(j.id) === Number(user.id));
-    
-    if (!myJugador) {
-      console.warn('[CombatView] ❌ No se encontró mi jugador en la lista:', user.id);
-      return;
-    }
-    
-    console.log('[CombatView] 🔍 Mi jugador encontrado:', myJugador);
-    
-    // 🔥 SIMPLIFICADO: Usar nombre del personaje seleccionado
-    const personajeNombre = myJugador.selected_personaje?.nombre;
-    
-    if (!personajeNombre) {
-      console.warn('[CombatView] ❌ Usuario sin personaje seleccionado:', user.id, myJugador);
-      return;
-    }
-    
-    console.log('[CombatView] ✅ Personaje:', personajeNombre);
-    setMyPersonajeId(personajeNombre); // Guardar el nombre
-    
-    // 🔥 Buscar mi entidadId en los actores resueltos del combate
-    const myActor = debugActors.find(
-      actor => actor.tipo === 'PJ' && 
-      String(actor.nombre).toLowerCase() === String(personajeNombre).toLowerCase()
-    );
-    
-    if (myActor && myActor.entidadId) {
-      console.log('[CombatView] 🎯 Mi entidadId encontrado:', myActor.entidadId);
-      setSelectedActor(myActor.entidadId);
-      loadPersonajeData(myActor.entidadId);
-    } else {
-      console.warn('[CombatView] ⚠️ No se encontró entidadId para personaje:', personajeNombre, 'en actores:', debugActors);
-    }
-    
     async function loadPersonajeData(personajeId) {
       try {
         const res = await api.get(`/personaje/${personajeId}`);
         const pjData = res.data.personaje || res.data || null;
         setMyPersonaje(pjData);
-        console.log('[CombatView] Personaje cargado:', pjData?.nombre);
-        console.log('[CombatView] Acciones:', pjData?.accionesObtenidas?.map(a => a.nombre).join(', '));
       } catch (e) {
-        console.error('[CombatView] Error cargando personaje:', e);
+        console.error(
+          '[CombatView] Error cargando personaje:',
+          e
+        );
       }
     }
-  }, [user, jugadores, orden, debugActors]);
 
-  // 🔥 DEBUG: Log cuando turnoActual cambie
-  useEffect(() => {
-    if (turnoActual) {
-      // Buscar el actor actual en el orden por nombre
-      const actorActual = orden.find(a => a.entidadId === turnoActual.actorId && a.tipo === turnoActual.actorTipo);
-      const actorNombre = actorActual?.nombre || '';
-      
-      console.log('[CombatView] 🎯 turnoActual actualizado:', {
-        actorId: turnoActual.actorId,
-        actorTipo: turnoActual.actorTipo,
-        actorNombre,
-        numero: turnoActual.numero,
-        myPersonajeNombre: myPersonajeId,
-        isMyTurn: turnoActual && myPersonajeId && actorNombre && String(actorNombre).toLowerCase() === String(myPersonajeId).toLowerCase(),
-        isEnemyTurn: turnoActual && turnoActual.actorTipo === 'EN'
-      });
+    if (
+      !user ||
+      !orden ||
+      orden.length === 0 ||
+      !jugadores ||
+      jugadores.length === 0
+    ) {
+      return;
     }
-  }, [turnoActual, myPersonajeId, orden]);
 
+    const myJugador = jugadores.find(
+      (j) => Number(j.id) === Number(user.id)
+    );
+    if (!myJugador) return;
+
+    const personajeNombre = myJugador.selected_personaje?.nombre;
+    if (!personajeNombre) return;
+
+    setMyPersonajeId(personajeNombre);
+
+    const myActor = (actoresResueltos || []).find(
+      (actor) =>
+        actor.tipo === 'PJ' &&
+        String(actor.nombre).toLowerCase() ===
+          String(personajeNombre).toLowerCase()
+    );
+
+    if (myActor && myActor.entidadId) {
+      setSelectedActor(myActor.entidadId);
+      loadPersonajeData(myActor.entidadId);
+    }
+  }, [user, jugadores, orden, actoresResueltos]);
+
+  // Seleccionar actor PJ por defecto
   useEffect(() => {
-    // seleccionar actor activo por defecto (primer aliado del orden que sea tipo PJ)
     if (orden && orden.length && !selectedActor) {
       const ally = orden.find((o) => o.tipo === 'PJ');
       if (ally) setSelectedActor(ally.entidadId);
     }
-  }, [orden]);
+  }, [orden, selectedActor]);
 
-  const getActorById = (id) => {
-    const found = orden.find((o) => String(o.entidadId) === String(id));
-    return found || null;
-  };
-
-  const handleAction = async (accionId = null, objetoId = null, targetId = null) => {
+  const handleAction = async (accionId = null) => {
     if (!turnoActual) return alert('Turno no encontrado');
-    if (!selectedActor) return alert('Selecciona un actor');
+    if (!myPersonajeId)
+      return alert('No se pudo resolver tu personaje');
+
     try {
       setLoading(true);
-      
-      // 🔥 Buscar el tipo del target en orden
-      const targetActor = orden.find(o => String(o.entidadId) === String(targetId));
-      const targetTipo = targetActor ? String(targetActor.tipo).toUpperCase() : 'PJ';
-      
-      const body = { 
-        userId: user?.id, 
-        personajeNombre: myPersonajeId, // Ahora es el nombre del personaje
-        targetId, 
-        targetTipo 
-      };
-      if (accionId) body.accionId = accionId;
-      if (objetoId) body.objetoId = objetoId;
-      const res = await api.post(`/combate/${combateId}/turno/${turnoActual.id}/act`, body);
-      const data = res.data;
-      // actualizar HP local si el backend devolvió hp
-      if (data?.hp && data.hp.objetivo != null) {
-        setHpActual((prev) => ({ ...prev, [data.hp.objetivo]: data.hp.despues }));
+      const targetId = chooseTargetFromOrden(orden, hpActual);
+      if (!targetId) {
+        alert('No hay objetivo disponible');
+        return;
       }
-      // mostrar estados aplicados (simple console por ahora)
-      if (data?.estadosAplicados) console.debug('Estados aplicados', data.estadosAplicados);
+
+      const targetActor = orden.find(
+        (o) => String(o.entidadId) === String(targetId)
+      );
+      const targetTipo = targetActor
+        ? String(targetActor.tipo).toUpperCase()
+        : 'PJ';
+
+      const body = {
+        userId: user?.id,
+        personajeNombre: myPersonajeId,
+        targetId,
+        targetTipo,
+      };
+
+      if (accionId) body.accionId = accionId;
+
+      await api.post(
+        `/combate/${combateId}/turno/${turnoActual.id}/act`,
+        body
+      );
     } catch (e) {
       console.error('Error ejecutando acción', e);
       if (e?.response?.status === 401) {
-        alert('Tu sesión ha expirado. Por favor, recarga la página e inicia sesión nuevamente.');
+        alert(
+          'Tu sesión ha expirado. Por favor, recarga la página e inicia sesión nuevamente.'
+        );
       } else {
-        alert(e?.response?.data?.error || 'Error ejecutando acción');
+        alert(
+          e?.response?.data?.error ||
+            'Error ejecutando acción'
+        );
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleUsePotion = async (objetoId) => {
+    if (!turnoActual) return alert('Turno no encontrado');
+    if (!myPersonajeId)
+      return alert('No se pudo resolver tu personaje');
+
+    try {
+      setLoading(true);
+      const targetId =
+        selectedActor || chooseTargetFromOrden(orden, hpActual);
+      if (!targetId) {
+        alert('No hay objetivo disponible');
+        return;
+      }
+
+      const targetActor = orden.find(
+        (o) => String(o.entidadId) === String(targetId)
+      );
+      const targetTipo = targetActor
+        ? String(targetActor.tipo).toUpperCase()
+        : 'PJ';
+
+      const body = {
+        userId: user?.id,
+        personajeNombre: myPersonajeId,
+        targetId,
+        targetTipo,
+        objetoId,
+      };
+
+      await api.post(
+        `/combate/${combateId}/turno/${turnoActual.id}/act`,
+        body
+      );
+    } catch (e) {
+      console.error('Error usando poción', e);
+      if (e?.response?.status === 401) {
+        alert(
+          'Tu sesión ha expirado. Por favor, recarga la página e inicia sesión nuevamente.'
+        );
+      } else {
+        alert(
+          e?.response?.data?.error ||
+            'Error usando poción'
+        );
       }
     } finally {
       setLoading(false);
@@ -378,451 +639,593 @@ export default function CombatView({
 
   const handleEndTurn = async () => {
     if (!turnoActual) return;
+
     try {
       setLoading(true);
-      // 🔥 Enviar userId y nombre del personaje para validación
-      const body = { 
-        userId: user?.id, 
-        personajeNombre: myPersonajeId // Ahora es el nombre del personaje
+      const body = {
+        userId: user?.id,
+        personajeNombre: myPersonajeId,
       };
-      const res = await api.post(`/combate/${combateId}/turno/${turnoActual.id}/end`, body);
-      const nxt = res.data?.turno || null;
-      const ronda = res.data?.ronda;
-      const idxActual = res.data?.idxActual;
-      if (res.data?.fin) {
-        // Combate finalizado
-        const winner = determineWinner();
-        if (winner === 'victory') navigate(`/partida/${partidaId}/victory`, { state: { combateId } });
-        else navigate(`/partida/${partidaId}/defeat`, { state: { combateId } });
-        return;
-      }
-      if (nxt) setTurnoActual(nxt);
+
+      await api.post(
+        `/combate/${combateId}/turno/${turnoActual.id}/end`,
+        body
+      );
     } catch (e) {
       console.error('Error finalizando turno', e);
       if (e?.response?.status === 401) {
-        alert('Tu sesión ha expirado. Por favor, recarga la página e inicia sesión nuevamente.');
+        alert(
+          'Tu sesión ha expirado. Por favor, recarga la página e inicia sesión nuevamente.'
+        );
       } else {
-        alert(e?.response?.data?.error || 'Error finalizando turno');
+        alert(
+          e?.response?.data?.error ||
+            'Error finalizando turno'
+        );
       }
     } finally {
       setLoading(false);
     }
   };
 
-  const handleRefreshCombat = async () => {
-    try {
-      setLoading(true);
-      const res = await api.get(`/combate/${combateId}`);
-      const data = res.data || {};
-      // intentar normalizar payload
-      const payload = data.combate || data;
-      if (payload) {
-        setCombate(payload.combate || payload);
-        setOrden(normalizeOrden(payload.orden || payload.ordenIniciativa || orden || []));
-        setTurnoActual(payload.turnoActual || turnoActual);
-        setHpActual(payload.hpActual || hpActual);
-        if (data.actores) setDebugActors(data.actores);
-      }
-    } catch (e) {
-      console.warn('No se pudo refrescar combate por GET /combate/:id — puede que no exista endpoint GET', e?.response?.data || e.message);
-      alert('Refresco de combate no disponible en backend');
-    } finally { setLoading(false); }
-  };
-
-  const determineWinner = () => {
-    const pjIds = orden.filter(o => o.tipo === 'PJ').map(o => o.entidadId);
-    // 🔥 Usar formato "tipo:id" para acceder al HP
-    const alivePJ = pjIds.some(id => (hpActual[`PJ:${id}`] ?? 0) > 0);
-    return alivePJ ? 'victory' : 'defeat';
-  };
-
-  if (!hydrated) {
+  if (!combate && !initialCombate) {
     return (
-      <div style={{ color: 'white', padding: 20 }}>
-        Cargando datos de combate...
+      <div className="combat-overlay-error">
+        No hay datos de combate. Inicia un combate desde el mapa
+        primero.
       </div>
     );
   }
 
-  if (!combate && !initial) {
-    return (
-      <div style={{ color: 'white', padding: 20 }}>
-        No hay datos de combate. Inicia un combate desde el mapa primero.
-      </div>
+  // ¿Es mi turno?
+  let isMyTurn = false;
+  let isEnemyTurn = false;
+  let actorTurnName = '';
+
+  if (turnoActual) {
+    actorTurnName = getActorDisplayName(
+      participants,
+      orden,
+      actoresResueltos,
+      turnoActual.actorId,
+      turnoActual.actorTipo
     );
+
+    const myNameLower = (myPersonajeId || '').toLowerCase();
+    const actorLower = (actorTurnName || '').toLowerCase();
+    isMyTurn =
+      !!myPersonajeId &&
+      myNameLower &&
+      actorLower &&
+      myNameLower === actorLower;
+    isEnemyTurn =
+      String(turnoActual.actorTipo).toUpperCase() === 'EN';
   }
 
-  // render básico de UI solicitado
+  const disabledActions =
+    loading || !isMyTurn || isEnemyTurn || turnoActual?.seHizoAccion;
+
+  // Acciones del personaje
+  const accionesPersonaje =
+    myPersonaje?.accionesObtenidas || [];
+
+  const armaEquipada =
+    Array.isArray(myPersonaje?.equipArma) &&
+    myPersonaje.equipArma.length > 0
+      ? myPersonaje.equipArma[0]
+      : null;
+
+  const nombreArma =
+    armaEquipada?.nombre || armaEquipada?.name || 'Arma';
+
+  const basicAttackName = armaEquipada
+    ? `Ataque con ${nombreArma}`
+    : 'Ataque básico';
+
+  const claseNombre = myPersonaje?.clase || '';
+  const claseIconName = claseNombre
+    ? `${claseNombre.charAt(0).toUpperCase()}${claseNombre
+        .slice(1)
+        .toLowerCase()}`
+    : 'Clase';
+
+  const nivelIcon = (n) => `/src/assets/combate/Nivel%20${n}.png`;
+
+  const actionSlots = [
+    {
+      id: 1,
+      icon: '/src/assets/combate/Ataque.png',
+      title: basicAttackName,
+      habilidadNombre: basicAttackName,
+    },
+    {
+      id: 2,
+      icon: `/src/assets/combate/${claseIconName}.png`,
+      title: accionesPersonaje[0]?.nombre || 'Acción secundaria',
+      habilidadNombre: accionesPersonaje[0]?.nombre || null,
+    },
+    {
+      id: 3,
+      icon: nivelIcon(1),
+      title: accionesPersonaje[1]?.nombre || 'Habilidad I',
+      habilidadNombre: accionesPersonaje[1]?.nombre || null,
+    },
+    {
+      id: 4,
+      icon: nivelIcon(2),
+      title: accionesPersonaje[2]?.nombre || 'Habilidad II',
+      habilidadNombre: accionesPersonaje[2]?.nombre || null,
+    },
+    {
+      id: 5,
+      icon: nivelIcon(3),
+      title: accionesPersonaje[3]?.nombre || 'Habilidad III',
+      habilidadNombre: accionesPersonaje[3]?.nombre || null,
+    },
+    {
+      id: 6,
+      icon: nivelIcon(4),
+      title: accionesPersonaje[4]?.nombre || 'Habilidad IV',
+      habilidadNombre: accionesPersonaje[4]?.nombre || null,
+    },
+  ];
+
+  // Party (máx 4) y orden escalonado (PJ del turno al lado derecho)
+  const partyActorsRaw = (orden || [])
+    .filter((o) => String(o.tipo).toUpperCase() === 'PJ')
+    .slice(0, 4);
+
+  let partyActors = partyActorsRaw;
+
+  if (
+    turnoActual &&
+    String(turnoActual.actorTipo).toUpperCase() === 'PJ'
+  ) {
+    const idx = partyActorsRaw.findIndex(
+      (p) =>
+        Number(p.entidadId) === Number(turnoActual.actorId)
+    );
+    if (idx >= 0) {
+      // El que tiene el turno va al FINAL (lado derecho)
+      partyActors = [
+        ...partyActorsRaw.slice(idx + 1),
+        ...partyActorsRaw.slice(0, idx + 1),
+      ];
+    }
+  }
+
+  // Enemigo principal
+  const mainEnemy =
+    (orden || []).find(
+      (o) => String(o.tipo).toUpperCase() === 'EN'
+    ) || null;
+
+  const mainEnemyName = mainEnemy
+    ? getActorDisplayName(
+        participants,
+        orden,
+        actoresResueltos,
+        mainEnemy.entidadId,
+        'EN'
+      )
+    : '';
+
+  const mainEnemyHpKey = mainEnemy
+    ? `EN:${mainEnemy.entidadId}`
+    : null;
+  const mainEnemyHP =
+    mainEnemyHpKey && hpActual
+      ? hpActual[mainEnemyHpKey] ?? 0
+      : 0;
+  const mainEnemyMaxHP =
+    mainEnemyHpKey && hpMax
+      ? hpMax[mainEnemyHpKey] ?? (mainEnemyHP || 1)
+      : 1;
+
+  const enemyParticipant = mainEnemy
+    ? (participants || []).find(
+        (p) =>
+          String(p.entidadId) ===
+            String(mainEnemy.entidadId) &&
+          String(p.tipo).toUpperCase() === 'EN'
+      )
+    : null;
+
+  const enemyExtra = mainEnemy
+    ? (actoresResueltos || []).find(
+        (a) =>
+          String(a.tipo || '').toUpperCase() === 'EN' &&
+          String(a.entidadId ?? a.id) ===
+            String(mainEnemy.entidadId)
+      )
+    : null;
+
+  const enemyInfo =
+    enemyParticipant?.personaje || enemyExtra || {};
+  const enemyEstadosActivos =
+    enemyParticipant?.estadosActivos ||
+    enemyInfo.estadosActivos ||
+    enemyInfo.estadosSnapshot ||
+    [];
+
   return (
-    <div style={{ width: '100vw', height: '100vh', background: '#071019', color: '#fff', fontFamily: 'sans-serif', display: 'flex', flexDirection: 'column' }}>
-      {/* Botón cerrar (solo si es overlay) */}
-      {onClose && (
-        <button
-          onClick={onClose}
-          style={{
-            position: 'absolute',
-            top: 16,
-            right: 16,
-            padding: '8px 16px',
-            background: '#e33',
-            color: '#fff',
-            border: 'none',
-            borderRadius: 6,
-            cursor: 'pointer',
-            fontSize: 14,
-            fontWeight: 'bold',
-            zIndex: 10000
-          }}
-        >
-          ✕ Cerrar Combate
-        </button>
-      )}
-      
-      <div style={{ display: 'flex', gap: 20, padding: 12 }}>
-        {/* Panel retratos y HP (top-left) */}
-        <div style={{ width: 220, background: '#0008', padding: 8, borderRadius: 8 }}>
-          <h4>Party</h4>
-          {participants.filter(o => o.tipo === 'PJ').slice(0,4).map((o) => {
-            // 🔥 Usar formato "tipo:id" para acceder al HP
-            const hpKey = `PJ:${o.entidadId}`;
-            return (
-              <div key={o.entidadId} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                <img src={o.personaje?.portrait || null} alt="retrato" style={{ width: 48, height: 48, objectFit: 'cover', imageRendering: 'pixelated' }} />
-                <div>
-                  <div style={{ fontSize: 12 }}>{o.personaje?.nombre || `PJ ${o.entidadId}`}</div>
-                  <HpBar current={(hpActual?.[hpKey] ?? 0)} max={o.personaje?.puntosGolpe ?? 10} />
-                </div>
-              </div>
-            );
-          })}
-        </div>
+    <div className="combat-overlay">
+      <div className="combat-modal">
+        {/* Carteles superiores (verde, amarillo, blanco) */}
+        <div className="combat-log-strip">
+          <div className="combat-turn-banner">
+            {actorTurnName ? (
+              <>
+                <span className="combat-turn-banner-label">
+                  Es el turno de
+                </span>
+                <span className="combat-turn-banner-name">
+                  {formatName(actorTurnName)}
+                </span>
+              </>
+            ) : (
+              <span className="combat-turn-banner-label">
+                Esperando turno...
+              </span>
+            )}
+          </div>
 
-        {/* Centro: actor que tiene turno */}
-        <div style={{ flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-          <div style={{ textAlign: 'center' }}>
-            <div style={{ fontSize: 18, marginBottom: 8 }}>Turno:</div>
-            <div style={{ background: '#0008', padding: 20, borderRadius: 10 }}>
-              {turnoActual ? (
-                <>
-                  <div style={{ fontSize: 20, marginBottom: 8 }}>{getActorDisplayName(participants, orden, debugActors, turnoActual.actorId, turnoActual.actorTipo, combate)}</div>
-                  {/* intentar mostrar sprite desde orden */}
-                  {getActorSprite(participants, turnoActual.actorId) ? (
-                    <img src={getActorSprite(participants, turnoActual.actorId)} alt="activo" style={{ width: 160, height: 160, imageRendering: 'pixelated' }} />
-                  ) : (
-                    <div style={{ width: 160, height: 160, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#111', borderRadius: 8 }}>
-            {getActorDisplayName(participants, orden, debugActors, turnoActual.actorId, turnoActual.actorTipo, combate)}
-                    </div>
-                  )}
-                </>
-              ) : (
-                <div>No hay turno activo</div>
-              )}
-            </div>
+          <div className="combat-action-banner">
+            {lastAction ? lastAction.headerYellow : ''}
+          </div>
+
+          <div className="combat-detail-banner">
+            {lastAction ? lastAction.detalle : ''}
           </div>
         </div>
 
-        {/* Right: enemigos con HP */}
-        <div style={{ width: 240, background: '#0008', padding: 8, borderRadius: 8 }}>
-          <h4>Enemigos</h4>
-          {/* listar enemigos desde orden / debugActors */}
-          {(orden || []).filter(o => String(o.tipo).toUpperCase() === 'EN').length === 0 ? (
-            <div style={{ padding: 6, background: '#111', borderRadius: 6 }}>ninguno</div>
-          ) : (
-            (orden || []).filter(o => String(o.tipo).toUpperCase() === 'EN').map((e) => {
-              // 🔥 Buscar enemigo en debugActors por tipo Y entidadId
-              const enemigoData = Array.isArray(debugActors) 
-                ? debugActors.find(d => d.tipo === 'EN' && String(d.entidadId) === String(e.entidadId))
-                : null;
-              
-              const name = e.nombre || enemigoData?.nombre || `Enemigo ${e.entidadId}`;
-              
-              // 🔥 Obtener HP del enemigo usando formato "tipo:id"
-              const hpKey = `EN:${e.entidadId}`;
-              const currentHP = hpActual[hpKey] ?? 0;
-              const maxHP = enemigoData?.hpMax || 10;
-              const hpPercent = maxHP > 0 ? Math.max(0, Math.min(100, (currentHP / maxHP) * 100)) : 0;
-              
-              return (
-                <div key={`${e.tipo}:${e.entidadId}`} style={{ padding: 8, background: '#111', borderRadius: 6, marginBottom: 6 }}>
-                  <div style={{ marginBottom: 4, fontWeight: 'bold' }}>{name}</div>
-                  <div style={{ fontSize: 12, marginBottom: 4, color: '#aaa' }}>
-                    HP: {currentHP} / {maxHP}
+        {/* Panel aliados vs enemigo */}
+        <div className="combat-layout">
+          {/* Aliados */}
+          <div className="combat-party-panel">
+            <div className="combat-entities-row">
+              {partyActors.length === 0 && (
+                <span className="combat-empty-text">
+                  Sin personajes
+                </span>
+              )}
+
+              {partyActors.map((o) => {
+                const pjName = getActorDisplayName(
+                  participants,
+                  orden,
+                  actoresResueltos,
+                  o.entidadId,
+                  'PJ'
+                );
+
+                const hpKey = `PJ:${o.entidadId}`;
+                const currentHP = hpActual?.[hpKey] ?? 0;
+                const maxHP =
+                  hpMax?.[hpKey] ?? (currentHP || 1);
+                const pct =
+                  maxHP > 0
+                    ? Math.max(
+                        0,
+                        Math.min(
+                          100,
+                          (currentHP / maxHP) * 100
+                        )
+                      )
+                    : 0;
+
+                const spriteSrc = pjName
+                  ? `/src/assets/personajes/${pjName}.png`
+                  : null;
+
+                const participant = (participants || []).find(
+                  (p) =>
+                    String(p.entidadId) ===
+                      String(o.entidadId) &&
+                    String(p.tipo).toUpperCase() === 'PJ'
+                );
+                const pj = participant?.personaje || {};
+                const estadosActivos =
+                  participant?.estadosActivos ||
+                  pj.estadosActivos ||
+                  pj.estadosSnapshot ||
+                  [];
+
+                return (
+                  <div
+                    key={`pj-${o.entidadId}`}
+                    className="combat-entity"
+                  >
+                    <div className="combat-entity-sprite">
+                      {spriteSrc ? (
+                        <img
+                          src={spriteSrc}
+                          alt={pjName}
+                          className="combat-entity-img"
+                        />
+                      ) : (
+                        <span className="combat-portrait-empty">
+                          ?
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="combat-entity-name">
+                      {formatName(pjName)}
+                    </div>
+
+                    <div className="combat-hpbar">
+                      <div
+                        className="combat-hpbar-fill"
+                        style={{ width: `${pct}%` }}
+                      />
+                    </div>
+
+                    <div className="combat-hptext">
+                      {currentHP} / {maxHP}
+                    </div>
+
+                    {/* Tooltip de personaje */}
+                    <div className="character-tooltip">
+                      <p>
+                        <strong>Nombre:</strong>{' '}
+                        {pj.nombre || formatName(pjName)}
+                      </p>
+                      <p>
+                        <strong>Raza:</strong>{' '}
+                        {pj.raza || '-'}{' '}
+                        {pj.subraza
+                          ? `${pj.subraza}`
+                          : ''}
+                      </p>
+                      <p>
+                        <strong>Subclase:</strong>{' '}
+                        {pj.subclase || '-'}
+                      </p>
+                      <p>
+                        <strong>Velocidad:</strong>{' '}
+                        {pj.velocidad ?? '-'}
+                      </p>
+                      <p>
+                        <strong>Origen:</strong>{' '}
+                        {pj.origen || '-'}
+                      </p>
+                      <p>
+                        <strong>Alineamiento:</strong>{' '}
+                        {pj.alineamiento || '-'}
+                      </p>
+                      <p className="character-tooltip-desc">
+                        {pj.descripcion &&
+                        pj.descripcion.trim()
+                          ? pj.descripcion
+                          : 'Sin descripción'}
+                      </p>
+
+                      {renderDamageRowCombat(
+                        'Debilidad',
+                        pj.debilidad
+                      )}
+                      {renderDamageRowCombat(
+                        'Resistencia',
+                        pj.resistencia
+                      )}
+                      {renderDamageRowCombat(
+                        'Inmunidad',
+                        pj.inmunidad
+                      )}
+
+                      {renderEstadosCombat(estadosActivos)}
+                      {renderStatsLineCombat(pj)}
+                    </div>
                   </div>
-                  <div style={{ width: '100%', height: 12, background: '#333', borderRadius: 6, overflow: 'hidden' }}>
-                    <div style={{ 
-                      width: `${hpPercent}%`, 
-                      height: '100%', 
-                      background: currentHP === 0 ? '#666' : hpPercent > 50 ? '#4a4' : hpPercent > 20 ? '#da3' : '#e33',
-                      borderRadius: 6,
-                      transition: 'width 0.3s ease'
-                    }} />
-                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Enemigo */}
+          <div className="combat-enemy-panel">
+            {mainEnemy ? (
+              <div className="combat-entity combat-entity--enemy">
+                <div className="combat-entity-sprite">
+                  {mainEnemyName ? (
+                    <img
+                      src={`/src/assets/enemigos/${mainEnemyName}.gif`}
+                      alt={mainEnemyName}
+                      className="combat-entity-img"
+                    />
+                  ) : (
+                    <div className="combat-portrait-empty">
+                      EN
+                    </div>
+                  )}
                 </div>
-              );
-            })
-          )}
-          {/* Debug panel toggle */}
-          <div style={{ marginTop: 12 }}>
-            <button onClick={() => setDebugOpen(!debugOpen)} style={{ padding: '6px 8px' }}>{debugOpen ? 'Ocultar debug' : 'Mostrar debug'}</button>
-            {debugOpen && (
-              <div style={{ marginTop: 8, background: '#000', padding: 8, borderRadius: 6, maxHeight: 220, overflow: 'auto' }}>
-                <div style={{ marginBottom: 6 }}><strong>Combat payload (state):</strong></div>
-                <pre style={{ fontSize: 11, color: '#bcd', whiteSpace: 'pre-wrap' }}>{JSON.stringify({ combate, orden, turnoActual, hpActual }, null, 2)}</pre>
-                <div style={{ marginTop: 6 }}><strong>Actores resueltos:</strong></div>
-                <pre style={{ fontSize: 11, color: '#bcd', whiteSpace: 'pre-wrap' }}>{JSON.stringify(debugActors, null, 2)}</pre>
-                <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
-                  <button onClick={handleRefreshCombat} style={{ padding: '6px 8px' }} disabled={loading}>Refrescar</button>
-                  <button onClick={() => { navigator.clipboard?.writeText(JSON.stringify({ combate, orden, turnoActual, hpActual, actores: debugActors })); }} style={{ padding: '6px 8px' }}>Copiar JSON</button>
+
+                <div className="combat-entity-name">
+                  {mainEnemyName}
                 </div>
+
+                <div className="combat-hpbar">
+                  <div
+                    className="combat-hpbar-fill"
+                    style={{
+                      width: `${
+                        mainEnemyMaxHP > 0
+                          ? Math.max(
+                              0,
+                              Math.min(
+                                100,
+                                (mainEnemyHP /
+                                  mainEnemyMaxHP) *
+                                  100
+                              )
+                            )
+                          : 0
+                      }%`,
+                    }}
+                  />
+                </div>
+
+                <div className="combat-hptext">
+                  {mainEnemyHP} / {mainEnemyMaxHP}
+                </div>
+
+                {/* Tooltip enemigo */}
+                <div className="character-tooltip">
+                  <p>
+                    <strong>Nombre:</strong>{' '}
+                    {enemyInfo.nombre || mainEnemyName}
+                  </p>
+                  <p>
+                    <strong>Raza:</strong>{' '}
+                    {enemyInfo.raza || '-'}
+                  </p>
+                  <p>
+                    <strong>Velocidad:</strong>{' '}
+                    {enemyInfo.velocidad ?? '-'}
+                  </p>
+                  <p className="character-tooltip-desc">
+                    {enemyInfo.descripcion &&
+                    enemyInfo.descripcion.trim()
+                      ? enemyInfo.descripcion
+                      : 'Sin descripción'}
+                  </p>
+
+                  {renderDamageRowCombat(
+                    'Debilidad',
+                    enemyInfo.debilidad
+                  )}
+                  {renderDamageRowCombat(
+                    'Resistencia',
+                    enemyInfo.resistencia
+                  )}
+                  {renderDamageRowCombat(
+                    'Inmunidad',
+                    enemyInfo.inmunidad
+                  )}
+
+                  {renderEstadosCombat(
+                    enemyEstadosActivos
+                  )}
+                  {renderStatsLineCombat(enemyInfo)}
+                </div>
+              </div>
+            ) : (
+              <div className="combat-enemy-empty">
+                Sin enemigo
               </div>
             )}
           </div>
         </div>
-      </div>
 
-      {/* Barra de acciones inferior */}
-      <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, padding: 12, background: '#000c', display: 'flex', justifyContent: 'center' }}>
-        <div style={{ width: '90%', display: 'flex', gap: 8, alignItems: 'center' }}>
-          {/* 🔥 Calcular si es mi turno y construir lista de acciones */}
-          {(() => {
-            // Debug: log de valores para diagnosticar
-            // Comparar por nombre del personaje
-            const actorActual = orden.find(a => a.entidadId === turnoActual?.actorId && a.tipo === turnoActual?.actorTipo);
-            const actorNombre = actorActual?.nombre || '';
-            
-            if (turnoActual && myPersonajeId) {
-              console.log('[CombatView] Comparación de turno:', {
-                'actorNombre': actorNombre,
-                'myPersonajeNombre': myPersonajeId,
-                'son iguales': String(actorNombre).toLowerCase() === String(myPersonajeId).toLowerCase()
-              });
-            }
-            
-            const isMyTurn = turnoActual && myPersonajeId && actorNombre && String(actorNombre).toLowerCase() === String(myPersonajeId).toLowerCase();
-            const isEnemyTurn = turnoActual && turnoActual.actorTipo === 'EN';
-            const disabled = loading || !isMyTurn || isEnemyTurn || turnoActual?.seHizoAccion;
-            
-            // 🔥 Construir lista de acciones en orden correcto
-            const botonesAcciones = [];
-            
-            // 1. ATAQUE BÁSICO (del arma equipada)
-            let ataqueBasico = null;
-            if (myPersonaje) {
-              // Buscar el arma equipada (equipArma es un array JSONB)
-              const armaEquipada = Array.isArray(myPersonaje.equipArma) && myPersonaje.equipArma.length > 0 
-                ? myPersonaje.equipArma[0] 
-                : null;
-              
-              if (armaEquipada) {
-                const nombreArma = armaEquipada.nombre || armaEquipada.name || 'Arma';
-                ataqueBasico = { nombre: `Ataque básico (${nombreArma})`, indice: 1 };
-              } else {
-                ataqueBasico = { nombre: 'Ataque básico', indice: 1 };
-              }
-            }
-            
-            if (ataqueBasico) {
-              botonesAcciones.push(
-                <ActionButton 
-                  key="ataque-basico"
-                  title={ataqueBasico.nombre} 
-                  onClick={() => handleAction(ataqueBasico.indice, null, chooseTarget(participants))} 
-                  disabled={disabled} 
-                />
-              );
-            }
-            
-            // 2. ACCIÓN SECUNDARIA + HABILIDADES (de accionesObtenidas)
-            const accionesPersonaje = myPersonaje?.accionesObtenidas || [];
-            
-            if (accionesPersonaje.length > 0) {
-              // Primera acción = Acción secundaria (consume accionExtra)
-              botonesAcciones.push(
-                <ActionButton 
-                  key="secundaria"
-                  title={accionesPersonaje[0].nombre || 'Acción secundaria'} 
-                  onClick={() => handleAction(2, null, chooseTarget(participants))} 
-                  disabled={disabled} 
-                />
-              );
-              
-              // Separador visual
-              botonesAcciones.push(<div key="sep" style={{ width: 12 }} />);
-              
-              // Resto de acciones = Habilidades I, II, III, IV
-              const habilidades = accionesPersonaje.slice(1, 5); // Máximo 4 habilidades
-              habilidades.forEach((habilidad, idx) => {
-                const nombreHab = habilidad.nombre || `Habilidad ${['I', 'II', 'III', 'IV'][idx]}`;
-                botonesAcciones.push(
-                  <ActionButton 
-                    key={`hab-${idx}`}
-                    title={nombreHab} 
-                    onClick={() => handleAction(3 + idx, null, chooseTarget(participants))} 
-                    disabled={disabled} 
-                  />
-                );
-              });
-            }
-            
-            return (
-              <>
-                <div style={{ display: 'flex', flex: 1, gap: 12, alignItems: 'center', minWidth: 0 }}>
-                  {/* Acciones del personaje */}
-                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                    {botonesAcciones.length > 0 ? (
-                      botonesAcciones
+        {/* Barra de acciones inferior */}
+        <div className="combat-actions-bar">
+          <div className="combat-actions-main">
+            {/* Panel habilidades */}
+            <div className="combat-actions-panel">
+              <div className="combat-panel-title">
+                Acciones
+              </div>
+              <div className="combat-actions-row">
+                {actionSlots.map((slot) => (
+                  <button
+                    key={slot.id}
+                    className="combat-action-button"
+                    disabled={disabledActions}
+                    onClick={() =>
+                      handleAction(slot.id)
+                    }
+                    title={
+                      slot.habilidadNombre ||
+                      slot.title
+                    }
+                  >
+                    {slot.icon ? (
+                      <img
+                        src={slot.icon}
+                        alt={slot.title}
+                        className="combat-action-icon"
+                      />
                     ) : (
-                      // Fallback: mostrar botones genéricos si no se cargó el personaje
-                      <>
-                        <ActionButton title="Cargando acciones..." onClick={() => {}} disabled={true} />
-                      </>
+                      <span className="combat-action-placeholder">
+                        ?
+                      </span>
                     )}
-                  </div>
-                  
-                  {/* Panel de inventario con scroll */}
-                  <InventoryPanel 
-                    participants={participants} 
-                    hpActual={hpActual} 
-                    onUseItem={(objId, targetId) => handleAction(null, objId, targetId)} 
-                    disabled={disabled} 
-                  />
-                  
-                  {/* Espaciador flexible */}
-                  <div style={{ flex: 1, minWidth: 12 }} />
-                  
-                  {/* Mensajes de estado */}
-                  {!isMyTurn && !isEnemyTurn && <span style={{ color: '#f88', fontSize: 14, whiteSpace: 'nowrap' }}>No es tu turno</span>}
-                  {isEnemyTurn && <span style={{ color: '#8af', fontSize: 14, whiteSpace: 'nowrap' }}>Turno del enemigo...</span>}
-                </div>
-                
-                {/* Botón de fin de turno siempre visible */}
-                <button 
-                  onClick={handleEndTurn} 
-                  disabled={loading || !isMyTurn || isEnemyTurn} 
-                  style={{ 
-                    padding: '8px 16px',
-                    minWidth: 100,
-                    whiteSpace: 'nowrap',
-                    flexShrink: 0
-                  }}
-                >
-                  Fin turno
-                </button>
-              </>
-            );
-          })()}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Panel pociones */}
+            <PotionsPanel
+              personaje={myPersonaje}
+              disabled={
+                loading || !isMyTurn || isEnemyTurn
+              }
+              onUsePotion={handleUsePotion}
+            />
+          </div>
+
+          {/* Botón fin de turno */}
+          <button
+            className="combat-endturn-button"
+            onClick={handleEndTurn}
+            disabled={
+              loading || !isMyTurn || isEnemyTurn
+            }
+          >
+            Fin turno
+          </button>
         </div>
       </div>
     </div>
   );
 }
 
-function ActionButton({ title, onClick, disabled = false }) {
-  return (
-    <button 
-      title={title} 
-      onClick={onClick} 
-      disabled={disabled}
-      style={{ 
-        padding: '8px 12px', 
-        borderRadius: 6,
-        opacity: disabled ? 0.5 : 1,
-        cursor: disabled ? 'not-allowed' : 'pointer'
-      }}
-    >
-      {title}
-    </button>
-  );
-}
+function PotionsPanel({ personaje, disabled, onUsePotion }) {
+  const inventario = personaje?.inventario || [];
+  const potions = inventario.filter(isPotion);
 
-function InventoryPanel({ participants, hpActual, onUseItem, disabled = false }) {
-  // si hay un actor en participants, listar su inventario — fallback vacío
-  const actor = participants.find(o => o.tipo === 'PJ');
-  const inventario = actor?.personaje?.inventario || [];
-  
   return (
-    <div style={{ 
-      display: 'flex', 
-      flexDirection: 'column',
-      background: '#111', 
-      padding: 8, 
-      borderRadius: 6,
-      minWidth: 150,
-      maxWidth: 300
-    }}>
-      <div style={{ 
-        fontSize: 11, 
-        color: '#888', 
-        marginBottom: 4,
-        fontWeight: 'bold'
-      }}>
-        Inventario
-      </div>
-      <div style={{ 
-        maxHeight: 80, 
-        overflowY: 'auto',
-        overflowX: 'hidden',
-        display: 'flex', 
-        flexDirection: 'column',
-        gap: 4
-      }}>
-        {inventario.length === 0 ? (
-          <div style={{ color: '#666', fontSize: 12 }}>Vacío</div>
+    <div className="combat-inventory-panel">
+      <div className="combat-panel-title">Pociones</div>
+      <div className="combat-inventory-list">
+        {potions.length === 0 ? (
+          <div className="combat-inventory-empty">
+            Sin pociones
+          </div>
         ) : (
-          inventario.map((it, idx) => (
-            <div 
-              key={idx} 
-              title={`${it.nombre || 'obj'} — ${it.descripcion || ''}`} 
-              style={{ 
-                padding: '4px 8px', 
-                background: '#000', 
-                borderRadius: 4, 
-                cursor: disabled ? 'not-allowed' : 'pointer',
-                fontSize: 12,
-                opacity: disabled ? 0.5 : 1,
-                whiteSpace: 'nowrap',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                transition: 'background 0.2s'
-              }} 
-              onClick={() => !disabled && onUseItem(it.id, chooseTarget(participants))}
-              onMouseEnter={(e) => !disabled && (e.target.style.background = '#222')}
-              onMouseLeave={(e) => e.target.style.background = '#000'}
+          potions.map((it, idx) => (
+            <div
+              key={it.id || idx}
+              className={
+                'combat-inventory-item' +
+                (disabled ? ' is-disabled' : '')
+              }
+              onClick={() => {
+                if (!disabled) onUsePotion(it.id);
+              }}
+              title={`${it.nombre || 'Poción'} (x${
+                it.cantidad ?? 1
+              })`}
             >
-              {it.nombre || `obj${idx}`}
+              <span className="combat-potion-icon-wrapper">
+                <img
+                  src={`/src/assets/objetos/${
+                    it.nombre || 'Pocion'
+                  }.png`}
+                  alt={it.nombre || 'Poción'}
+                  className="combat-potion-icon"
+                  onError={(e) => {
+                    e.currentTarget.style.display =
+                      'none';
+                  }}
+                />
+              </span>
             </div>
           ))
         )}
       </div>
     </div>
   );
-}
-
-function chooseTarget(list) {
-  // list: participants or orden; seleccionar primer EN si existe, sino primer PJ
-  if (!list || list.length === 0) return null;
-  const enem = list.find(o => o.tipo === 'EN');
-  if (enem) return enem.entidadId;
-  const ally = list.find(o => o.tipo === 'PJ');
-  return ally ? ally.entidadId : null;
-}
-
-function getActorDisplayName(participants, orden, debugActors, actorId, actorTipo) {
-  if (!actorId) return '';
-  const p = (participants || []).find(x => String(x.entidadId) === String(actorId));
-  if (p?.personaje?.nombre) return p.personaje.nombre;
-  const o = (orden || []).find(x => String(x.entidadId) === String(actorId));
-  if (o?.nombre) return o.nombre;
-  if (Array.isArray(debugActors)) {
-    const d = debugActors.find(a => String(a.entidadId) === String(actorId) || String(a?.id) === String(actorId));
-    if (d?.nombre) return d.nombre;
-  }
-  return actorTipo === 'EN' ? 'Enemigo' : `PJ ${actorId}`;
-}
-
-function getActorSprite(list, actorId) {
-  if (!list || list.length === 0) return null;
-  const f = list.find(o => String(o.entidadId) === String(actorId));
-  // sprite puede venir en personaje.sprite
-  return f?.personaje?.sprite || f?.detalle?.sprite || null;
 }

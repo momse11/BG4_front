@@ -1,0 +1,552 @@
+@import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+
+/* Bloquea scroll horizontal global */
+html, body {
+  overflow-x: hidden;
+}
+
+/* ───────────────────────────── OVERLAY / MODAL ───────────────────────────── */
+.combat-overlay {
+  position: fixed;
+  inset: 0;
+  background: #0A0F00;
+  display: flex;
+  align-items: flex-start; /* lo más arriba posible */
+  justify-content: center;
+  z-index: 1300;
+  padding: 16px 12px 12px;
+  box-sizing: border-box;
+  font-family: 'Press Start 2P', system-ui, sans-serif;
+}
+
+.combat-modal {
+  position: relative;
+  background-color: #0A0F00;
+  color: #F8E9D0;
+  border: none;
+  box-shadow: none;
+  padding: 8px 16px 14px;
+  max-width: 1100px;
+  width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;   /* scroll vertical */
+  overflow-x: hidden; /* sin scroll horizontal */
+  box-sizing: border-box;
+  font-family: 'Press Start 2P', system-ui, sans-serif;
+  font-size: 0.6rem;
+  border-radius: 0;
+}
+
+/* ───────────────────────────── CARTEL SUPERIOR: TURNO + ACCIÓN ───────────────────────────── */
+.combat-log-strip {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 10px;
+}
+
+/* Banner de turno (verde) centrado */
+.combat-turn-banner {
+  padding: 4px 2px;
+  background-color: transparent;
+  font-size: 0.75rem;
+  text-transform: none;
+  display: flex;
+  align-items: center;
+  justify-content: center; /* centrado */
+  gap: 6px;
+}
+
+.combat-turn-banner-label {
+  text-align: center;
+  color: #C0A66C;
+}
+
+.combat-turn-banner-name {
+  color: #4A6931; /* verde */
+  text-align: center;
+  white-space: nowrap;
+}
+
+/* Amarillo: X ha usado Y (centrado) */
+.combat-action-banner {
+  padding: 4px 2px;
+  border: none;
+  background-color: transparent;
+  box-shadow: none;
+  color: #C0A66C;
+  text-align: center;
+  font-size: 0.55rem;
+  min-height: 1.2em;
+}
+
+/* Blanco/detalle: texto de la jugada centrado */
+.combat-detail-banner {
+  padding: 4px 2px;
+  background-color: transparent;
+  color: #F8E9D0;
+  font-size: 0.48rem;
+  line-height: 1.3;
+  text-align: center;
+  min-height: 1.3em;
+}
+
+/* ───────────────────────────── LAYOUT PRINCIPAL ───────────────────────────── */
+.combat-layout {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  align-items: flex-start;
+  margin-bottom: 10px;
+}
+
+/* Títulos genéricos (Acciones / Pociones) */
+.combat-panel-title {
+  font-size: 0.6rem;
+  color: #C0A66C;
+  margin-bottom: 6px;
+}
+
+/* ───────────────────────────── PANEL PARTY (IZQUIERDA) / ENEMIGO (DERECHA) ───────────────────────────── */
+.combat-party-panel,
+.combat-enemy-panel {
+  border: none;
+  background-color: #0A0F00;
+  box-shadow: none;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 210px;
+}
+
+/* Aliados: personajes centrados y alineados por abajo */
+.combat-entities-row {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  position: relative;
+}
+
+/* Enemigo centrado en su casilla */
+.combat-enemy-panel {
+  align-items: center;
+  justify-content: center;
+}
+
+/* Entidad genérica (PJ o enemigo) */
+.combat-entity {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  position: relative;
+  width: auto;
+  margin: 0 12px;
+}
+
+/* Sprite grande, sin fondo ni borde */
+.combat-entity-sprite {
+  width: 150px;
+  height: 350px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  image-rendering: pixelated;
+  background: transparent;
+  border: none;
+}
+
+.combat-entity-img {
+  display: block;
+  image-rendering: pixelated;
+  max-width: 100%;
+  max-height: 100%;
+}
+
+.combat-portrait-empty {
+  color: #C0A66C;
+  font-size: 0.6rem;
+}
+
+.combat-entity-name {
+  font-size: 0.55rem;
+  color: #F8E9D0;
+  white-space: nowrap;
+  text-align: center;
+}
+
+/* Texto vacío genérico */
+.combat-empty-text {
+  font-size: 0.48rem;
+  color: #C0A66C;
+}
+
+/* Barra de vida genérica */
+.combat-hpbar {
+  width: 100%;
+  height: 8px;
+  background-color: #0A0F00;
+  border: 2px solid #C0A66C;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.combat-hpbar-fill {
+  height: 100%;
+  background-color: #C0A66C;
+  transition: width 0.3s ease-out;
+}
+
+/* Texto HP actual / máximo */
+.combat-hptext {
+  font-size: 0.45rem;
+  color: #C0A66C;
+  margin-top: 2px;
+  text-align: center;
+}
+
+/* Enemigo vacío */
+.combat-enemy-empty {
+  font-size: 0.48rem;
+  color: #C0A66C;
+}
+
+/* ───────────────────────────── TOOLTIP DE PERSONAJES / ENEMIGOS ───────────────────────────── */
+
+.combat-entity .character-tooltip {
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translate(-50%, -8px);
+  min-width: 220px;
+  max-width: 280px;
+  background-color: #0A0F00;
+  border: 2px solid #C0A66C;
+  padding: 6px 8px;
+  font-size: 0.45rem;
+  line-height: 1.4;
+  z-index: 1500;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease-out, transform 0.15s ease-out;
+}
+
+.combat-entity:hover .character-tooltip {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translate(-50%, -4px);
+}
+
+.character-tooltip p {
+  margin: 2px 0;
+}
+
+.character-tooltip-desc {
+  margin-top: 4px;
+  font-size: 0.42rem;
+}
+
+.character-tooltip-states {
+  margin-top: 4px;
+}
+
+.character-tooltip-states ul {
+  margin: 2px 0 0;
+  padding-left: 14px;
+}
+
+.character-tooltip-states li {
+  margin-bottom: 2px;
+}
+
+/* ───────────────────────────── BARRA DE ACCIONES INFERIOR ───────────────────────────── */
+/* Barra inferior */
+.combat-actions-bar {
+  margin-top: 10px;
+  border-top: 3px solid #4A6931;
+  padding-top: 8px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+/* Acciones + pociones a la izquierda.
+   Reservamos espacio para el botón de fin de turno. */
+.combat-actions-main {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+  flex: 1 1 auto;
+  max-width: calc(100% - 140px); /* 140px ≈ ancho del botón */
+}
+
+/* Panel de acciones (habilidades) */
+.combat-actions-panel {
+  border: 3px solid #4A6931;
+  padding: 6px 8px;
+  background-color: #0A0F00;
+  box-shadow: 0 3px 0 #0A0F00;
+  flex: 0 0 auto;
+  width: 360px;
+  max-height: 130px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* Panel de pociones – ocupa el espacio entre acciones y botón Fin turno */
+.combat-inventory-panel {
+  border: 3px solid #4A6931;
+  padding: 6px 8px;
+  background-color: #0A0F00;
+  box-shadow: 0 3px 0 #0A0F00;
+  flex: 1 1 auto;      /* se estira para ocupar todo el espacio restante */
+  min-width: 0;
+  max-width: 100%;
+  max-height: 130px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  overflow: hidden;
+}
+
+/* Lista de pociones con scroll horizontal */
+.combat-inventory-list {
+  flex: 0 0 auto;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  border-top: 2px solid #4A6931;
+  padding-top: 4px;
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+/* Botón fin de turno a la derecha */
+.combat-endturn-button {
+  background-color: #4A6931;
+  color: #F8E9D0;
+  border: 3px solid #C0A66C;
+  box-shadow: 0 3px 0 #0A0F00;
+  padding: 0 12px;
+  font-family: 'Press Start 2P', system-ui, sans-serif;
+  font-size: 0.5rem;
+  cursor: pointer;
+  border-radius: 0;
+  white-space: nowrap;
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 140px; /* cuadra con el calc de arriba */
+  flex: 0 0 auto;
+}
+
+/* Habilidades en línea */
+.combat-actions-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Botones de acción: el icono es el botón (tamaño original) */
+.combat-action-button {
+  background-color: transparent;
+  color: inherit;
+  border: none;
+  box-shadow: none;
+  padding: 0;
+  cursor: pointer;
+  border-radius: 0;
+  width: auto;
+  height: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.combat-action-button:disabled,
+.combat-action-button.is-disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.combat-action-button:not(.is-disabled):not(:disabled):active {
+  transform: translateY(1px);
+}
+
+/* Iconos de acción a tamaño original */
+.combat-action-icon {
+  display: block;
+  image-rendering: pixelated;
+}
+
+.combat-action-placeholder {
+  font-size: 0.55rem;
+  color: #C0A66C;
+}
+
+/* Inventario lateral (pociones) */
+.combat-inventory-title,
+.combat-panel-title {
+  font-size: 0.6rem;
+  color: #C0A66C;
+}
+
+/* Items de inventario */
+.combat-inventory-item {
+  font-size: 0.45rem;
+  padding: 2px;
+  cursor: pointer;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Hover sin efecto visual */
+.combat-inventory-item:hover {
+  background-color: transparent;
+  color: inherit;
+}
+
+.combat-inventory-item.is-disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.combat-inventory-empty {
+  font-size: 0.45rem;
+  color: #C0A66C;
+}
+
+/* Icono poción (tamaño original) */
+.combat-potion-icon-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.combat-potion-icon {
+  image-rendering: pixelated;
+}
+
+/* Botón fin de turno (a la derecha, mismo alto) */
+.combat-endturn-button:disabled {
+  opacity: 0.4;
+  cursor: default;
+  box-shadow: none;
+}
+
+.combat-endturn-button:not(:disabled):active {
+  transform: translateY(2px);
+  box-shadow: 0 1px 0 #0A0F00;
+}
+
+/* ───────────────────────────── ESTADOS DE ERROR ───────────────────────────── */
+.combat-overlay-error {
+  position: fixed;
+  inset: 0;
+  background: #0A0F00;
+  color: #FF6666;
+  font-family: 'Press Start 2P', system-ui, sans-serif;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.6rem;
+  z-index: 1300;
+}
+
+/* ───────────────────────────── RESPONSIVE ───────────────────────────── */
+@media (max-width: 980px) {
+  .combat-modal {
+    max-height: 95vh;
+    padding: 10px 12px;
+  }
+
+  .combat-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .combat-party-panel,
+  .combat-enemy-panel {
+    min-height: auto;
+  }
+
+  .combat-actions-bar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .combat-actions-main {
+    flex-direction: column;
+    align-items: stretch;
+    max-width: 100%;
+  }
+
+  .combat-actions-panel {
+    width: 100%;
+  }
+
+  .combat-inventory-panel {
+    flex: 1 1 auto;   /* sobreescribe el ancho fijo en pantallas pequeñas */
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .combat-actions-row {
+    flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 600px) {
+  .combat-modal {
+    max-width: 95%;
+    padding: 8px 8px 10px;
+    font-size: 0.55rem;
+  }
+
+  .combat-turn-banner {
+    font-size: 0.6rem;
+  }
+
+  .combat-action-banner,
+  .combat-detail-banner {
+    font-size: 0.48rem;
+  }
+
+  .combat-endturn-button {
+    font-size: 0.45rem;
+    width: 100%;
+  }
+}
+
+/* Scrollbars estilo pixel-art para pociones */
+.combat-inventory-list::-webkit-scrollbar {
+  height: 8px;
+}
+
+.combat-inventory-list::-webkit-scrollbar-track {
+  background: #0A0F00;
+}
+
+.combat-inventory-list::-webkit-scrollbar-thumb {
+  background: #4A6931;
+  border: 2px solid #0A0F00;
+  box-shadow: 0 0 0 1px #C0A66C;
+}
+
+.combat-inventory-list::-webkit-scrollbar-thumb:hover {
+  background: #C0A66C;
+}
+
+.combat-inventory-list {
+  scrollbar-width: thin;
+  scrollbar-color: #4A6931 #0A0F00;
+}

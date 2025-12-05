@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import './GameOverView.css';
+import '../../assets/styles/GameOverView.css';
 
 /**
  * GameOverView - Pantalla que se muestra cuando todos los aliados mueren en combate
