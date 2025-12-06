@@ -1222,6 +1222,10 @@ export default function CombatView({
                 const spriteSrc = pjName
                   ? `/src/assets/personajes/${pjName}.png`
                   : null;
+                
+                const spriteGifSrc = pjName
+                  ? `/src/assets/personajes/${pjName}.gif`
+                  : null;
 
                 const estadosActivos =
                   participant?.estadosActivos ||
@@ -1240,6 +1244,11 @@ export default function CombatView({
                           src={spriteSrc}
                           alt={pjName}
                           className="combat-entity-img"
+                          onError={(e) => {
+                            if (spriteGifSrc && e.target.src !== spriteGifSrc) {
+                              e.target.src = spriteGifSrc;
+                            }
+                          }}
                         />
                       ) : (
                         <span className="combat-portrait-empty">
