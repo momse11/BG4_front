@@ -245,6 +245,38 @@ export function usePartidaWS(partidaId, jugador, options = {}) {
             }
             return;
           }
+
+          // MAP_ADVANCED: payload ejemplo { partidaId, fromMapaId, toMapaId, restCasilla: { id, x, y } }
+          if (data?.type === 'MAP_ADVANCED') {
+            try {
+              const payload = data;
+              // Guardar para que la nueva vista del mapa pueda hidratarse
+              try {
+                localStorage.setItem(`map_advanced_${partidaId}`, JSON.stringify(payload));
+                console.debug('[usePartidaWS] stored map_advanced payload for', partidaId);
+              } catch (e) {
+                console.debug('[usePartidaWS] failed to store map_advanced payload', e);
+              }
+
+              // Emitir evento en-page para handlers que están montados (MapView puede reaccionar)
+              try {
+                window.dispatchEvent(new CustomEvent('map_advanced', { detail: payload }));
+                console.debug('[usePartidaWS] dispatched map_advanced event', payload);
+              } catch (e) {
+                console.error('[usePartidaWS] failed to dispatch map_advanced', e);
+              }
+
+              // Si viene toMapaId, navegar (igual que PARTIDA_STARTED hace)
+              const toMapaId = payload.toMapaId || payload.to_mapa_id || null;
+              if (toMapaId) {
+                // navegar a la ruta del mapa
+                window.location.href = `/partida/${partidaId}/mapa/${toMapaId}`;
+              }
+            } catch (e) {
+              console.error('[usePartidaWS] Error handling MAP_ADVANCED', e);
+            }
+            return;
+          }
         } catch (e) {
           console.error("WS message parse error", e);
         }
