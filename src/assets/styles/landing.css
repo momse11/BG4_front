@@ -136,6 +136,47 @@ html, body, #root {
   line-height: 1.6;
 }
 
+.pixel-modal-body h3 {
+  margin: 16px 0 8px 0;
+  color: #4A6931;
+  font-size: 0.75rem;
+}
+
+.pixel-modal-body h4 {
+  margin: 0 0 6px 0;
+  color: #4A6931;
+  font-size: 0.7rem;
+}
+
+.pixel-modal-body p {
+  margin: 6px 0;
+  font-size: 0.65rem;
+  line-height: 1.4;
+}
+
+.pixel-modal-body img {
+  image-rendering: pixelated;
+  border: 2px solid #C0A66C;
+  padding: 4px;
+  background-color: #F0E8DC;
+}
+
+.pixel-modal-body div[style*="display: grid"] {
+  gap: 12px !important;
+}
+
+.pixel-modal-body div[style*="marginY"] {
+  margin-top: 16px !important;
+  margin-bottom: 16px !important;
+}
+
+.pixel-modal-body div[style*="padding: 10px"] {
+  border-left: 3px solid #4A6931;
+  background-color: #F0E8DC !important;
+  padding: 12px !important;
+  margin-bottom: 12px;
+}
+
 .pixel-modal-close {
   margin-top: 16px;
 }
